@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}心电脉搏信号身份认证系统{% endblock %}</title>
+    <!-- 引入Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 引入自定义CSS -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- 引入Font Awesome图标 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .admin-link {
+            opacity: 0.1;
+            transition: opacity 0.3s;
+            text-decoration: none;
+            color: #adb5bd;
+            font-size: 0.8rem;
+        }
+        .admin-link:hover {
+            opacity: 1;
+            color: #6c757d;
+        }
+    </style>
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- 侧边导航栏 -->
+            {% if session.username %}
+            <div class="col-md-2 bg-dark sidebar">
+                <div class="d-flex flex-column flex-shrink-0 p-3 text-white">
+                    <a href="/" class="d-flex align-items-center mb-3 mb-md-0 me-md-auto text-white text-decoration-none">
+                        <i class="fas fa-heartbeat me-2"></i>
+                        <span class="fs-4">心电脉搏信号认证</span>
+                    </a>
+                    <hr>
+                    <ul class="nav nav-pills flex-column mb-auto">
+                        <li class="nav-item">
+                            <a href="{{ url_for('dashboard') }}" class="nav-link text-white {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                                <i class="fas fa-tachometer-alt me-2"></i>
+                                仪表盘
+                            </a>
+                        </li>
+                        <li>
+                            <a href="{{ url_for('logout') }}" class="nav-link text-white">
+                                <i class="fas fa-sign-out-alt me-2"></i>
+                                退出登录
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+            <div class="col-md-10 ms-sm-auto px-md-4 main-content">
+            {% else %}
+            <div class="col-12 main-content">
+            {% endif %}
+                <!-- 页面内容 -->
+                <div class="container mt-4">
+                    <!-- 闪现消息 -->
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            {% for message in messages %}
+                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                            </div>
+                            {% endfor %}
+                        {% endif %}
+                    {% endwith %}
+                    
+                    <!-- 主要内容 -->
+                    {% block content %}{% endblock %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 页脚 -->
+    <footer class="footer mt-auto py-3 bg-light">
+        <div class="container text-center">
+            <span class="text-muted">© {{ now().year }} 心电脉搏信号身份认证系统</span>
+            <div class="mt-2">
+                <a href="{{ url_for('admin_login') }}" class="admin-link">管理入口</a>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 引入Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- 引入jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- 引入自定义JS -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    {% block extra_js %}{% endblock %}
+</body>
+</html> 

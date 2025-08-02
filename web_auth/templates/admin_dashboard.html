@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>管理员仪表盘</title>
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            padding-top: 3rem;
+        }
+        .container {
+            max-width: 1200px;
+        }
+        .card {
+            margin-bottom: 1.5rem;
+        }
+        .nav-tabs {
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="#">心电脉搏信号身份认证系统管理</a>
+            <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav ml-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('admin_logout') }}">退出登录</a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container">
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-info alert-dismissible fade show">
+                        {{ message }}
+                        <button type="button" class="close" data-dismiss="alert">&times;</button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+            <li class="nav-item">
+                <a class="nav-link active" id="parameters-tab" data-toggle="tab" href="#parameters" role="tab">模型参数</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="verification-tab" data-toggle="tab" href="#verification" role="tab">验证参数</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="device-tab" data-toggle="tab" href="#device" role="tab">设备参数</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="training-tab" data-toggle="tab" href="#training" role="tab">训练参数</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="system-tab" data-toggle="tab" href="#system" role="tab">系统参数</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="users-tab" data-toggle="tab" href="#users" role="tab">用户管理</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" id="auth-tab" data-toggle="tab" href="#auth" role="tab">认证结果</a>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="adminTabContent">
+            <!-- 模型参数配置 -->
+            <div class="tab-pane fade show active" id="parameters" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>模型参数配置</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('update_params') }}">
+                            <input type="hidden" name="section" value="model">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label for="model_threshold">模型认证阈值</label>
+                                    <input type="number" step="0.01" min="0" max="1" class="form-control" id="model_threshold" name="model_threshold" value="{{ config.model_threshold }}" required>
+                                    <small class="form-text text-muted">认证模型输出阈值 (0-1)</small>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="alpha">阿尔法 (α)</label>
+                                    <input type="number" step="0.01" min="0" max="1" class="form-control" id="alpha" name="alpha" value="{{ config.alpha }}" required>
+                                    <small class="form-text text-muted">模型融合参数 α (0-1)</small>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="beta">贝塔 (β)</label>
+                                    <input type="number" step="0.01" min="0" max="1" class="form-control" id="beta" name="beta" value="{{ config.beta }}" required>
+                                    <small class="form-text text-muted">模型融合参数 β (0-1)</small>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">更新模型参数</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 验证参数配置 -->
+            <div class="tab-pane fade" id="verification" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>验证参数配置</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('update_params') }}">
+                            <input type="hidden" name="section" value="verification">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label for="verification_time">注册采集时间 (秒)</label>
+                                    <input type="number" min="10" max="120" class="form-control" id="verification_time" name="verification_time" value="{{ config.verification_time }}" required>
+                                    <small class="form-text text-muted">注册时数据采集时长</small>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="min_verification_success">最小验证成功次数</label>
+                                    <input type="number" min="1" max="10" class="form-control" id="min_verification_success" name="min_verification_success" value="{{ config.min_verification_success }}" required>
+                                    <small class="form-text text-muted">注册时需成功的最小验证次数</small>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="total_verification_count">总验证次数</label>
+                                    <input type="number" min="1" max="10" class="form-control" id="total_verification_count" name="total_verification_count" value="{{ config.total_verification_count }}" required>
+                                    <small class="form-text text-muted">注册时总验证次数</small>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">更新验证参数</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 设备参数配置 -->
+            <div class="tab-pane fade" id="device" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>设备参数配置</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('update_params') }}">
+                            <input type="hidden" name="section" value="device">
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <label for="device_connection_timeout">设备连接超时时间 (秒)</label>
+                                    <input type="number" step="0.5" min="1" max="60" class="form-control" id="device_connection_timeout" name="device_connection_timeout" value="{{ config.device_connection_timeout }}" required>
+                                    <small class="form-text text-muted">设备连接的最大等待时间</small>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label for="device_scan_timeout">设备扫描超时时间 (秒)</label>
+                                    <input type="number" step="0.5" min="1" max="30" class="form-control" id="device_scan_timeout" name="device_scan_timeout" value="{{ config.device_scan_timeout }}" required>
+                                    <small class="form-text text-muted">扫描蓝牙设备的最大等待时间</small>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">更新设备参数</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 训练参数配置 -->
+            <div class="tab-pane fade" id="training" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>训练参数配置</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('update_params') }}">
+                            <input type="hidden" name="section" value="training">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label for="training_epochs">训练轮数</label>
+                                    <input type="number" min="10" max="500" class="form-control" id="training_epochs" name="training_epochs" value="{{ config.training_epochs }}" required>
+                                    <small class="form-text text-muted">模型训练的轮数</small>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="training_learning_rate">学习率</label>
+                                    <input type="number" step="0.0001" min="0.0001" max="0.1" class="form-control" id="training_learning_rate" name="training_learning_rate" value="{{ config.training_learning_rate }}" required>
+                                    <small class="form-text text-muted">模型训练的学习率</small>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="training_batch_size">批处理大小</label>
+                                    <input type="number" min="1" max="256" class="form-control" id="training_batch_size" name="training_batch_size" value="{{ config.training_batch_size }}" required>
+                                    <small class="form-text text-muted">训练时的批处理大小</small>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">更新训练参数</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 系统参数配置 -->
+            <div class="tab-pane fade" id="system" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>系统参数配置</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('update_params') }}">
+                            <input type="hidden" name="section" value="system">
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <label for="system_use_cuda">使用CUDA</label>
+                                    <select class="form-control" id="system_use_cuda" name="system_use_cuda">
+                                        <option value="true" {% if config.system_use_cuda %}selected{% endif %}>启用</option>
+                                        <option value="false" {% if not config.system_use_cuda %}selected{% endif %}>禁用</option>
+                                    </select>
+                                    <small class="form-text text-muted">是否使用GPU加速</small>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label for="system_cuda_device">CUDA设备ID</label>
+                                    <input type="number" min="0" max="7" class="form-control" id="system_cuda_device" name="system_cuda_device" value="{{ config.system_cuda_device }}" required>
+                                    <small class="form-text text-muted">使用的CUDA设备ID（多GPU情况下）</small>
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">更新系统参数</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 用户管理 -->
+            <div class="tab-pane fade" id="users" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>用户列表</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>用户名</th>
+                                        <th>注册时间</th>
+                                        <th>模型路径</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for user in users %}
+                                    <tr>
+                                        <td>{{ user.username }}</td>
+                                        <td>{{ user.created_at.strftime('%Y-%m-%d %H:%M:%S') if user.created_at else 'N/A' }}</td>
+                                        <td><small>{{ user.model_path }}</small></td>
+                                        <td>
+                                            <form method="POST" action="{{ url_for('retrain_model', username=user.username) }}" style="display:inline;">
+                                                <button type="submit" class="btn btn-sm btn-warning">重新训练</button>
+                                            </form>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 认证结果修改 -->
+            <div class="tab-pane fade" id="auth" role="tabpanel">
+                <div class="card">
+                    <div class="card-header">
+                        <h5>修改认证结果</h5>
+                    </div>
+                    <div class="card-body">
+                        <form method="POST" action="{{ url_for('update_auth_result') }}">
+                            <div class="form-row">
+                                <div class="form-group col-md-4">
+                                    <label for="auth_username">用户</label>
+                                    <select class="form-control" id="auth_username" name="username" required>
+                                        <option value="">-- 选择用户 --</option>
+                                        {% for user in users %}
+                                        <option value="{{ user.username }}">{{ user.username }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="auth_result">认证结果</label>
+                                    <select class="form-control" id="auth_result" name="auth_result" required>
+                                        <option value="success">认证成功</option>
+                                        <option value="failed">认证失败</option>
+                                    </select>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="reason">修改原因</label>
+                                    <input type="text" class="form-control" id="reason" name="reason" placeholder="可选填写" value="修正误判">
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">提交修改</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html> 

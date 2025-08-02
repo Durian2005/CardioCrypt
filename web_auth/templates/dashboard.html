@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+
+{% block title %}仪表盘 - 心电脉搏信号身份认证系统{% endblock %}
+
+{% block content %}
+<div class="dashboard-header">
+    <div class="row align-items-center mb-4">
+        <div class="col">
+            <h1 class="h3"><i class="fas fa-tachometer-alt me-2"></i>仪表盘</h1>
+            <p class="text-muted">欢迎回来，<strong>{{ username }}</strong></p>
+        </div>
+        <div class="col-auto">
+            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
+                <i class="fas fa-sign-out-alt me-2"></i>退出登录
+            </a>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-user-shield me-2"></i>账号信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label text-muted">用户名</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-user"></i></span>
+                        <input type="text" class="form-control" value="{{ username }}" readonly>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label text-muted">认证方式</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-heartbeat"></i></span>
+                        <input type="text" class="form-control" value="ECG生物特征认证" readonly>
+                    </div>
+                </div>
+                <div class="mb-0">
+                    <label class="form-label text-muted">上次登录时间</label>
+                    <div class="input-group">
+                        <span class="input-group-text"><i class="fas fa-clock"></i></span>
+                        <input type="text" class="form-control" value="{{ now().strftime('%Y-%m-%d %H:%M:%S') }}" readonly>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-md-6">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-shield-alt me-2"></i>安全状态
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="security-status">
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="security-icon me-3">
+                            <i class="fas fa-check-circle text-success fa-2x"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-0">ECG身份验证</h6>
+                            <small class="text-muted">您的ECG身份特征已成功验证</small>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="security-icon me-3">
+                            <i class="fas fa-check-circle text-success fa-2x"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-0">会话安全</h6>
+                            <small class="text-muted">会话将在30分钟后过期</small>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center">
+                        <div class="security-icon me-3">
+                            <i class="fas fa-info-circle text-info fa-2x"></i>
+                        </div>
+                        <div>
+                            <h6 class="mb-0">安全提示</h6>
+                            <small class="text-muted">不使用系统时请记得退出登录</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>系统信息
+                </h5>
+            </div>
+            <div class="card-body">
+                <p>心电脉搏信号身份认证系统是一种基于心电图(ECG)和脉搏波(PPG)生物特征的身份验证解决方案。每个人的心电脉搏信号都是独一无二的，就像指纹一样，可以用于身份验证。</p>
+                <div class="alert alert-info">
+                    <i class="fas fa-lightbulb me-2"></i>
+                    本系统目前处于演示阶段，如有问题请联系系统管理员。
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    // 添加当前时间函数
+    function now() {
+        return new Date();
+    }
+</script>
+{% endblock %} 

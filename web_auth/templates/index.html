@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+
+{% block title %}首页 - 心电脉搏信号身份认证系统{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 text-center">
+        <div class="card shadow-lg border-0 rounded-lg mt-5">
+            <div class="card-header bg-primary text-white">
+                <h3 class="text-center font-weight-light my-4">
+                    <i class="fas fa-heartbeat me-2"></i>心电脉搏信号身份认证系统
+                </h3>
+            </div>
+            <div class="card-body">
+                <div class="welcome-content my-5">
+                    <h2 class="mb-4">欢迎使用心电脉搏信号身份认证系统</h2>
+                    <p class="lead mb-4">
+                        本系统使用心电图(ECG)和脉搏波(PPG)信号作为生物特征，提供安全可靠的身份认证解决方案。
+                        每个人的心电脉搏信号都是独一无二的，就像指纹一样，可以用于身份验证。
+                    </p>
+                    <div class="features row mt-5">
+                        <div class="col-md-4 mb-3">
+                            <div class="feature-icon mb-3">
+                                <i class="fas fa-shield-alt fa-3x text-primary"></i>
+                            </div>
+                            <h4>安全可靠</h4>
+                            <p>基于生物特征的认证方式，难以伪造，提供高安全性</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="feature-icon mb-3">
+                                <i class="fas fa-bolt fa-3x text-primary"></i>
+                            </div>
+                            <h4>快速响应</h4>
+                            <p>验证过程快速，只需几秒钟即可完成身份确认</p>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <div class="feature-icon mb-3">
+                                <i class="fas fa-user-check fa-3x text-primary"></i>
+                            </div>
+                            <h4>便捷使用</h4>
+                            <p>无需记忆复杂密码，只需连接设备即可完成认证</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="d-flex justify-content-center mt-5">
+                    <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg mx-2">
+                        <i class="fas fa-sign-in-alt me-2"></i>登录
+                    </a>
+                    <a href="{{ url_for('register') }}" class="btn btn-success btn-lg mx-2">
+                        <i class="fas fa-user-plus me-2"></i>注册
+                    </a>
+                </div>
+            </div>
+            <div class="card-footer text-center py-3">
+                <div class="small">
+                    <i class="fas fa-info-circle me-1"></i>
+                    需要连接心电脉搏设备才能使用本系统
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

@@ -1,0 +1,36 @@
+# 设备相关配置
+device:
+  connection_timeout: 10.0  # 设备连接超时时间(秒)
+  scan_timeout: 5.0         # 设备扫描超时时间(秒)
+
+# 模型相关配置
+model:
+  alpha: 0.6               # 模型融合参数α
+  beta: 0.4                # 模型融合参数β
+  threshold: 0.8           # 模型预测阈值
+  min_accuracy: 0.95       # 模型最低准确率要求
+  confidence_threshold: 0.8 # 身份验证置信度阈值
+
+# 系统相关配置
+system:
+  cuda_device: 0           # 使用的CUDA设备ID
+  use_cuda: true           # 是否使用CUDA加速
+
+# 训练相关配置
+training:
+  batch_size: 32           # 训练批次大小
+  epochs: 50               # 训练轮数
+  learning_rate: 0.001     # 学习率
+  early_stopping_patience: 10 # 早停耐心值(连续多少轮无改善则停止训练)
+
+# 验证相关配置
+verification:
+  min_success: 2           # 最少成功验证次数
+  time: 30                 # 验证超时时间(秒)
+  total_count: 3           # 总验证次数
+  validation_window: 5     # 连续验证窗口大小
+  max_attempts: 3          # 最大验证尝试次数
+
+# 信号处理相关配置
+signal:
+  length: 1000             # 信号序列长度
