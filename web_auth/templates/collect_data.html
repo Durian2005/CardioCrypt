@@ -241,6 +241,8 @@
             $.ajax({
                 url: '/api/scan_devices',
                 method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ device_type: 'all' }),
                 success: function(response) {
                     if (response.success) {
                         displayDevices(response.devices);
@@ -333,7 +335,10 @@
             url: '/api/connect_device',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ address: device.address }),
+            data: JSON.stringify({ 
+                address: device.address,
+                type: device.type || 'ble'  // 添加设备类型参数
+            }),
             success: function(response) {
                 if (response.success) {
                     $('#connecting-spinner').addClass('d-none');
@@ -366,7 +371,10 @@
             url: '/api/connect_device',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ address: selectedDevice.address }),
+            data: JSON.stringify({ 
+                address: selectedDevice.address,
+                type: selectedDevice.type || 'ble'  // 添加设备类型参数
+            }),
             success: function(response) {
                 if (response.success) {
                     $('#connecting-spinner').addClass('d-none');

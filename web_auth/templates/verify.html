@@ -125,6 +125,8 @@
             $.ajax({
                 url: '/api/scan_devices',
                 method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ device_type: 'all' }),
                 success: function(response) {
                     if (response.success) {
                         displayDevices(response.devices);
@@ -156,9 +158,52 @@
         if (devices.length === 0) {
             $devicesListGroup.append('<div class="alert alert-warning">未找到设备</div>');
         } else {
+            // 对设备列表进行排序：先显示带心率服务的设备，再按信号强度排序
+            devices.sort((a, b) => {
+                // 首先按是否有心率服务排序
+                if (a.has_hr_service && !b.has_hr_service) return -1;
+                if (!a.has_hr_service && b.has_hr_service) return 1;
+                
+                // 然后按信号强度排序（如果可用）
+                if (a.rssi !== undefined && b.rssi !== undefined) {
+                    return b.rssi - a.rssi; // 信号强度大的排前面
+                }
+                return 0;
+            });
+            
             devices.forEach(function(device) {
                 const $deviceItem = $('<button type="button" class="list-group-item list-group-item-action"></button>');
-                $deviceItem.html(`<i class="fas fa-bluetooth me-2"></i>${device.name} <small class="text-muted">(${device.address})</small>`);
+                
+                // 选择图标
+                let icon = 'fa-bluetooth';
+                if (device.type === 'serial') {
+                    icon = 'fa-usb';
+                }
+                
+                // 构建基本设备信息
+                let deviceHtml = `<i class="fas ${icon} me-2"></i>${device.name || '未命名设备'} <small class="text-muted">(${device.address})</small>`;
+                
+                // 添加设备类型标识
+                let typeBadge = '';
+                if (device.type === 'serial') {
+                    typeBadge = '<span class="badge bg-secondary text-white float-end ms-1">串口</span>';
+                } else {
+                    typeBadge = '<span class="badge bg-info text-white float-end ms-1">蓝牙</span>';
+                }
+                deviceHtml += typeBadge;
+                
+                // 添加信号强度标识
+                if (device.rssi !== undefined) {
+                    const signalStrength = getSignalStrengthDescription(device.rssi);
+                    deviceHtml += `<span class="badge bg-info text-white float-end ms-1">信号: ${signalStrength}</span>`;
+                }
+                
+                // 添加心率服务标识
+                if (device.has_hr_service) {
+                    deviceHtml += `<span class="badge bg-success text-white float-end ms-1">支持心率</span>`;
+                }
+                
+                $deviceItem.html(deviceHtml);
                 $deviceItem.data('device', device);
                 $deviceItem.on('click', function() {
                     selectDevice($(this).data('device'));
@@ -168,6 +213,15 @@
         }
         
         $devicesList.removeClass('d-none');
+    }
+    
+    // 根据RSSI值获取信号强度描述
+    function getSignalStrengthDescription(rssi) {
+        if (rssi >= -50) return '极佳';
+        if (rssi >= -65) return '很好';
+        if (rssi >= -75) return '良好';
+        if (rssi >= -85) return '一般';
+        return '弱';
     }
     
     // 选择设备
@@ -183,7 +237,10 @@
             url: '/api/connect_device',
             method: 'POST',
             contentType: 'application/json',
-            data: JSON.stringify({ address: device.address }),
+            data: JSON.stringify({ 
+                address: device.address,
+                type: device.type || 'ble'  // 添加设备类型参数
+            }),
             success: function(response) {
                 if (response.success) {
                     // 连接成功，开始验证

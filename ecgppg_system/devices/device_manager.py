@@ -14,6 +14,13 @@ import logging
 from ..config import settings
 from ..config import config as dynamic_config
 
+# 增加引用串口设备管理器
+try:
+    from .serial_device_manager import serial_manager
+    SERIAL_DEVICE_AVAILABLE = True
+except ImportError:
+    SERIAL_DEVICE_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 class EnvironmentManager:
@@ -70,6 +77,9 @@ class EnvironmentManager:
             else:
                 env_info['directories'][directory] = "已存在"
         
+        # 检查串口设备可用性
+        env_info['serial_device_available'] = SERIAL_DEVICE_AVAILABLE
+        
         return env_info
     
     @staticmethod
@@ -111,6 +121,9 @@ class EnvironmentManager:
         print("\n目录信息:")
         for directory, status in env_info['directories'].items():
             print(f"  {directory}: {status}")
+        
+        # 打印串口设备可用性
+        print(f"\n串口设备支持: {'可用' if env_info.get('serial_device_available', False) else '不可用'}")
         
         print("-" * 80)
     
@@ -169,3 +182,141 @@ class EnvironmentManager:
         except Exception as e:
             logger.exception("检查设备兼容性时出错")
             return False, torch.device('cpu'), f"检查设备兼容性时出错: {str(e)}"
+    
+    @staticmethod
+    def discover_serial_devices():
+        """
+        发现可用的串口设备
+        
+        返回:
+            List[Dict]: 串口设备列表，如果串口设备不可用则返回空列表
+        """
+        if not SERIAL_DEVICE_AVAILABLE:
+            logger.warning("串口设备支持不可用，请安装pyserial库")
+            return []
+        
+        try:
+            devices = serial_manager.discover_devices()
+            # 确保每个设备都有address字段，与前端期望一致
+            for device in devices:
+                if 'port' in device and 'address' not in device:
+                    device['address'] = device['port']
+            return devices
+        except Exception as e:
+            logger.error(f"发现串口设备时出错: {str(e)}")
+            return []
+    
+    @staticmethod
+    def connect_serial_device(port, baudrate=settings.SERIAL_BAUDRATE, timeout=settings.SERIAL_TIMEOUT):
+        """
+        连接到串口设备
+        
+        参数:
+            port (str): 串口设备端口
+            baudrate (int): 波特率，默认从设置中获取
+            timeout (float): 超时时间，默认从设置中获取
+            
+        返回:
+            bool: 连接是否成功
+        """
+        if not SERIAL_DEVICE_AVAILABLE:
+            logger.error("串口设备支持不可用，请安装pyserial库")
+            return False
+        
+        try:
+            return serial_manager.connect(port, baudrate, timeout)
+        except Exception as e:
+            logger.error(f"连接串口设备时出错: {str(e)}")
+            return False
+    
+    @staticmethod
+    def disconnect_serial_device():
+        """
+        断开与串口设备的连接
+        
+        返回:
+            bool: 是否成功断开连接
+        """
+        if not SERIAL_DEVICE_AVAILABLE:
+            return False
+        
+        try:
+            return serial_manager.disconnect()
+        except Exception as e:
+            logger.error(f"断开串口设备连接时出错: {str(e)}")
+            return False
+    
+    @staticmethod
+    def start_reading_serial_data(callback=None):
+        """
+        开始读取串口数据
+        
+        参数:
+            callback (Callable): 数据处理回调函数
+            
+        返回:
+            bool: 是否成功启动数据读取
+        """
+        if not SERIAL_DEVICE_AVAILABLE:
+            logger.error("串口设备支持不可用，请安装pyserial库")
+            return False
+        
+        try:
+            return serial_manager.start_reading(callback)
+        except Exception as e:
+            logger.error(f"启动串口数据读取时出错: {str(e)}")
+            return False
+    
+    @staticmethod
+    def stop_reading_serial_data():
+        """
+        停止读取串口数据
+        
+        返回:
+            bool: 是否成功停止数据读取
+        """
+        if not SERIAL_DEVICE_AVAILABLE:
+            return False
+        
+        try:
+            return serial_manager.stop_reading()
+        except Exception as e:
+            logger.error(f"停止串口数据读取时出错: {str(e)}")
+            return False
+    
+    @staticmethod
+    def get_serial_heart_rate():
+        """
+        获取串口设备的心率值
+        
+        返回:
+            int: 心率值，如果串口设备不可用则返回0
+        """
+        if not SERIAL_DEVICE_AVAILABLE:
+            return 0
+        
+        try:
+            return serial_manager.get_heart_rate()
+        except Exception as e:
+            logger.error(f"获取串口设备心率值时出错: {str(e)}")
+            return 0
+    
+    @staticmethod
+    def is_serial_data_fresh(max_age_seconds=60.0):
+        """
+        检查串口设备数据是否是最新的
+        
+        参数:
+            max_age_seconds (float): 数据最大年龄（秒）
+            
+        返回:
+            bool: 数据是否是最新的
+        """
+        if not SERIAL_DEVICE_AVAILABLE:
+            return False
+        
+        try:
+            return serial_manager.is_data_fresh(max_age_seconds)
+        except Exception as e:
+            logger.error(f"检查串口设备数据新鲜度时出错: {str(e)}")
+            return False

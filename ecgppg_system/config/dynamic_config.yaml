@@ -2,6 +2,10 @@
 device:
   connection_timeout: 10.0  # 设备连接超时时间(秒)
   scan_timeout: 5.0         # 设备扫描超时时间(秒)
+  serial_enabled: true      # 是否启用串口设备
+  serial_baudrate: 115200   # 串口波特率
+  serial_timeout: 1.0       # 串口超时时间(秒)
+  serial_data_read_interval: 0.01  # 串口数据读取间隔(秒)
 
 # 模型相关配置
 model:

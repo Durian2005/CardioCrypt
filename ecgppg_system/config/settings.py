@@ -61,6 +61,16 @@ BLE_PPG_DATA_CHAR_UUID = "00002a37-0000-1000-8000-00805f9b34fb"
 BLE_PPG_CONTROL_CHAR_UUID = "00002a39-0000-1000-8000-00805f9b34fb"
 
 #===============================
+# 串口设备配置
+#===============================
+# 串口配置
+SERIAL_BAUDRATE = 115200
+SERIAL_TIMEOUT = 1.0
+SERIAL_DATA_FRAME_HEAD = 0xFA
+SERIAL_DATA_FRAME_TAIL = 0xAF
+SERIAL_DATA_FRAME_LENGTH = 19  # 帧长度（字节）
+
+#===============================
 # 模型参数
 #===============================
 # 通用参数
