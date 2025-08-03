@@ -1336,238 +1336,238 @@ def start_data_collection():
                         
                         logger.info(f"已生成 {len(collected_data)} 个模拟ECG数据点")
 
-                # 处理采集到的数据
-                with registration_lock:
-                    # 保存当前批次的数据
-                    if 'data' not in current_registration_data[username]:
-                        current_registration_data[username]['data'] = []
-                    
-                    # 将收集的数据转换为适当的格式
-                    if collected_data and len(collected_data) > 0:
-                        # 确保collected_data中的每个元素都是数组
-                        all_signals = []
-                        for signal in collected_data:
-                            if len(signal.shape) >= 1:  # 确认是数组而非标量
-                                all_signals.append(signal)
-                        
-                        # 只有当有有效数据时才处理
-                        if all_signals:
-                            # 拼接所有采集的信号
-                            combined_signal = np.concatenate(all_signals)
-                            current_registration_data[username]['data'].append(combined_signal)
-                            logger.info(f"成功将用户 {username} 的{len(all_signals)}个信号数据合并为一个数组")
-                    
-                    # 更新状态为训练中
-                    current_registration_data[username]['status'] = 'training'
-                    logger.info(f"用户 {username} 状态更新为训练中")
+            # 处理采集到的数据
+            with registration_lock:
+                # 保存当前批次的数据
+                if 'data' not in current_registration_data[username]:
+                    current_registration_data[username]['data'] = []
                 
-                if SYSTEM_AVAILABLE:
-                    try:
-                        logger.info(f"SYSTEM_AVAILABLE = {SYSTEM_AVAILABLE}, 开始模型训练流程")
-                        # 准备训练数据
-                        # 将所有采集的数据合并为一个大数组
-                        all_data = np.concatenate(collected_data)
-                        logger.info(f"合并后的数据shape: {all_data.shape}")
-                        
-                        # 重塑数据为LSTM需要的格式 [batch_size, sequence_length, features]
-                        # 使用较小的序列长度，每10个数据点作为一个训练样本
-                        sequence_length = 10
-                        
-                        # 确保数据长度是序列长度的整数倍
-                        data_length = len(all_data)
-                        num_sequences = data_length // sequence_length
-                        
-                        if num_sequences == 0:
-                            # 如果数据不够一个序列，则填充
-                            padded_data = np.zeros(sequence_length)
-                            padded_data[:data_length] = all_data
-                            all_data = padded_data
-                            num_sequences = 1
-                            logger.info(f"数据长度不足，已填充至{sequence_length}个点")
-                        else:
-                            # 截断为序列长度的整数倍
-                            all_data = all_data[:num_sequences * sequence_length]
-                            logger.info(f"数据已截断为序列长度的整数倍: {all_data.shape}")
+                # 将收集的数据转换为适当的格式
+                if collected_data and len(collected_data) > 0:
+                    # 确保collected_data中的每个元素都是数组
+                    all_signals = []
+                    for signal in collected_data:
+                        if len(signal.shape) >= 1:  # 确认是数组而非标量
+                            all_signals.append(signal)
+                    
+                    # 只有当有有效数据时才处理
+                    if all_signals:
+                        # 拼接所有采集的信号
+                        combined_signal = np.concatenate(all_signals)
+                        current_registration_data[username]['data'].append(combined_signal)
+                        logger.info(f"成功将用户 {username} 的{len(all_signals)}个信号数据合并为一个数组")
+                
+                # 更新状态为训练中
+                current_registration_data[username]['status'] = 'training'
+                logger.info(f"用户 {username} 状态更新为训练中")
+            
+            if SYSTEM_AVAILABLE:
+                try:
+                    logger.info(f"SYSTEM_AVAILABLE = {SYSTEM_AVAILABLE}, 开始模型训练流程")
+                    # 准备训练数据
+                    # 将所有采集的数据合并为一个大数组
+                    all_data = np.concatenate(collected_data)
+                    logger.info(f"合并后的数据shape: {all_data.shape}")
+                    
+                    # 重塑数据为LSTM需要的格式 [batch_size, sequence_length, features]
+                    # 使用较小的序列长度，每10个数据点作为一个训练样本
+                    sequence_length = 10
+                    
+                    # 确保数据长度是序列长度的整数倍
+                    data_length = len(all_data)
+                    num_sequences = data_length // sequence_length
+                    
+                    if num_sequences == 0:
+                        # 如果数据不够一个序列，则填充
+                        padded_data = np.zeros(sequence_length)
+                        padded_data[:data_length] = all_data
+                        all_data = padded_data
+                        num_sequences = 1
+                        logger.info(f"数据长度不足，已填充至{sequence_length}个点")
+                    else:
+                        # 截断为序列长度的整数倍
+                        all_data = all_data[:num_sequences * sequence_length]
+                        logger.info(f"数据已截断为序列长度的整数倍: {all_data.shape}")
 
-                        logger.info(f"创建了{num_sequences}个训练样本，每个样本包含{sequence_length}个数据点")
-                        
-                        # 创建标签（全部为1，表示本人）
-                        labels = np.ones(num_sequences)
-                        
-                        # 创建PyTorch数据集和加载器
-                        x_tensor = torch.FloatTensor(all_data.reshape(num_sequences, sequence_length, 1))
-                        y_tensor = torch.FloatTensor(labels).unsqueeze(1)
-                        dataset = TensorDataset(x_tensor, y_tensor)
-                        train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
-                        test_loader = DataLoader(dataset, batch_size=32, shuffle=False)
-                        
-                        # 使用main中的create_and_train_model函数创建和训练模型
-                        logger.info(f"开始为用户 {username} 训练模型")
-                        
-                        try:
-                            # 创建模型 - 使用模块化实现替代直接调用main中的函数
-                            # 特征维度是1，但需要设置输入序列长度为10
-                            logger.info("尝试创建模型...")
-                            model = create_model(input_size=1)  # 特征维度是1
-                            logger.info(f"模型创建成功: {type(model)}")
-                            
-                            # 设置模型的输入大小为新的序列长度
-                            if hasattr(model, 'set_input_size'):
-                                model.set_input_size(1)  # 设置为1，因为我们的特征维度是1
-                                logger.info("已设置模型输入大小为1")
-                            model, device = setup_model_device(model)
-                            logger.info(f"模型已设置到设备: {device}")
-                        except Exception as model_error:
-                            logger.error(f"模型创建失败: {str(model_error)}")
-                            raise
-                        
-                        # 配置数据增强
-                        use_data_augmentation = configure_data_augmentation(train_loader)
-                        
-                        # 训练模型
-                        history = train_model(
-                            model=model,
-                            train_loader=train_loader,
-                            val_loader=test_loader,
-                            epochs=50,  # 适当的训练轮数
-                            device=device,
-                            use_data_augmentation=use_data_augmentation
-                        )
-                        
-                        # 验证模型 - 这是可选的，根据需要决定是否调用
-                        # validation_results = validate_model(model, train_loader, test_loader, signal_type="ecg", device=device)
-                        
-                        # 保存模型
-                        model_filename = f"{username}_model.pth"
-                        model_path = os.path.join(models_dir, model_filename)
-                        
-                        # 构建保存的元数据
-                        metadata = {
-                            'signal_type': 'ecg',
-                            'input_size': 1,
-                            'epochs_trained': history.get('epochs_trained', 0),
-                            'final_train_loss': history.get('train_loss', [])[-1] if history.get('train_loss') else None,
-                            'final_val_loss': history.get('val_loss', [])[-1] if history.get('val_loss') else None,
-                            'model_config': {'input_size': 1}
-                        }
-                        
-                        # 保存模型和元数据
-                        save_model(model, model_path, metadata)
-                        
-                        # 添加到用户模型缓存
-                        user_models[username] = model
-                        
-                        # 更新注册状态
-                        with registration_lock:
-                            current_registration_data[username]['status'] = 'verifying'
-                        
-                        # 执行验证，使用管理员配置的验证次数
-                        verification_success = 0
-                        total_verification_count = admin_config['total_verification_count']
-                        for i in range(total_verification_count):
-                            # 生成新的验证数据
-                            verify_ecg_data, _ = generate_ecg_ppg_data(num_samples=10, base_heart_rate=70 + random.uniform(-5, 5))
-                            
-                            # 重塑为LSTM需要的格式 [1, sequence_length, 1]
-                            verify_ecg_data = verify_ecg_data.reshape(1, 10, 1)
-                            
-                            # 使用模型进行验证
-                            model.eval()
-                            with torch.no_grad():
-                                device = next(model.parameters()).device
-                                verify_tensor = torch.FloatTensor(verify_ecg_data).to(device)
-                                
-                                # 使用模块化的身份验证函数
-                                auth_result = authenticate_single_signal(
-                                    model=model,
-                                    input_signal=verify_tensor,
-                                    threshold=admin_config['model_threshold'],
-                                    signal_type='ecg',
-                                    device=device
-                                )
-                                confidence = auth_result['score']
-                                authenticated = auth_result['authenticated']
-                            
-                            # 确定验证结果
-                            success = authenticated
-                            verification_details = {
-                                'confidence': float(confidence),
-                                'threshold': float(admin_config['model_threshold']),
-                                'authenticated': success
-                            }
-                            
-                            # 使用管理员配置的阈值
-                            if auth_result['authenticated']:
-                                with registration_lock:
-                                    current_registration_data[username]['verification_success'] += 1
-                                    verification_success += 1
-                            
-                            logger.info(f"验证 {i+1} 结果: 置信度 {confidence:.4f}")
-                            
-                            # 验证间隔
-                            time.sleep(2)
-                        
-                        # 检查验证结果，使用管理员配置的最小成功次数
-                        min_verification_success = admin_config['min_verification_success']
-                        if verification_success >= min_verification_success:
-                            # 更新注册状态
-                            with registration_lock:
-                                current_registration_data[username]['status'] = 'completed'
-                                current_registration_data[username]['model_path'] = model_path
-                            
-                            # 保存用户到数据库
-                            mongo.db.users.insert_one({
-                                'username': username,
-                                'model_path': model_path,
-                                'created_at': datetime.now()
-                            })
-                            
-                            logger.info(f"用户 {username} 注册成功")
-                        else:
-                            # 验证失败
-                            with registration_lock:
-                                current_registration_data[username]['status'] = 'failed'
-                            
-                            logger.warning(f"用户 {username} 验证失败")
+                    logger.info(f"创建了{num_sequences}个训练样本，每个样本包含{sequence_length}个数据点")
                     
-                    except Exception as e:
-                        logger.error(f"模型训练/验证失败: {str(e)}")
-                        with registration_lock:
-                            current_registration_data[username]['status'] = 'error'
-                else:
-                    # 如果系统不可用，使用模拟验证
-                    with registration_lock:
-                        current_registration_data[username]['status'] = 'verifying'
+                    # 创建标签（全部为1，表示本人）
+                    labels = np.ones(num_sequences)
                     
-                    # 模拟验证
-                    verification_success = 0
-                    for i in range(3):
-                        with registration_lock:
-                            current_registration_data[username]['verification_count'] += 1
-                            current_registration_data[username]['verification_success'] += 1
-                            verification_success += 1
-                        time.sleep(2)
+                    # 创建PyTorch数据集和加载器
+                    x_tensor = torch.FloatTensor(all_data.reshape(num_sequences, sequence_length, 1))
+                    y_tensor = torch.FloatTensor(labels).unsqueeze(1)
+                    dataset = TensorDataset(x_tensor, y_tensor)
+                    train_loader = DataLoader(dataset, batch_size=32, shuffle=True)
+                    test_loader = DataLoader(dataset, batch_size=32, shuffle=False)
                     
-                    # 模拟模型文件
+                    # 使用main中的create_and_train_model函数创建和训练模型
+                    logger.info(f"开始为用户 {username} 训练模型")
+                    
+                    try:
+                        # 创建模型 - 使用模块化实现替代直接调用main中的函数
+                        # 特征维度是1，但需要设置输入序列长度为10
+                        logger.info("尝试创建模型...")
+                        model = create_model(input_size=1)  # 特征维度是1
+                        logger.info(f"模型创建成功: {type(model)}")
+                        
+                        # 设置模型的输入大小为新的序列长度
+                        if hasattr(model, 'set_input_size'):
+                            model.set_input_size(1)  # 设置为1，因为我们的特征维度是1
+                            logger.info("已设置模型输入大小为1")
+                        model, device = setup_model_device(model)
+                        logger.info(f"模型已设置到设备: {device}")
+                    except Exception as model_error:
+                        logger.error(f"模型创建失败: {str(model_error)}")
+                        raise
+                    
+                    # 配置数据增强
+                    use_data_augmentation = configure_data_augmentation(train_loader)
+                    
+                    # 训练模型
+                    history = train_model(
+                        model=model,
+                        train_loader=train_loader,
+                        val_loader=test_loader,
+                        epochs=50,  # 适当的训练轮数
+                        device=device,
+                        use_data_augmentation=use_data_augmentation
+                    )
+                    
+                    # 验证模型 - 这是可选的，根据需要决定是否调用
+                    # validation_results = validate_model(model, train_loader, test_loader, signal_type="ecg", device=device)
+                    
+                    # 保存模型
                     model_filename = f"{username}_model.pth"
                     model_path = os.path.join(models_dir, model_filename)
-                    with open(model_path, 'w') as f:
-                        f.write("模拟模型文件")
+                    
+                    # 构建保存的元数据
+                    metadata = {
+                        'signal_type': 'ecg',
+                        'input_size': 1,
+                        'epochs_trained': history.get('epochs_trained', 0),
+                        'final_train_loss': history.get('train_loss', [])[-1] if history.get('train_loss') else None,
+                        'final_val_loss': history.get('val_loss', [])[-1] if history.get('val_loss') else None,
+                        'model_config': {'input_size': 1}
+                    }
+                    
+                    # 保存模型和元数据
+                    save_model(model, model_path, metadata)
+                    
+                    # 添加到用户模型缓存
+                    user_models[username] = model
                     
                     # 更新注册状态
                     with registration_lock:
-                        current_registration_data[username]['status'] = 'completed'
-                        current_registration_data[username]['model_path'] = model_path
+                        current_registration_data[username]['status'] = 'verifying'
                     
-                    # 保存用户到数据库
-                    mongo.db.users.insert_one({
-                        'username': username,
-                        'model_path': model_path,
-                        'created_at': datetime.now()
-                    })
+                    # 执行验证，使用管理员配置的验证次数
+                    verification_success = 0
+                    total_verification_count = admin_config['total_verification_count']
+                    for i in range(total_verification_count):
+                        # 生成新的验证数据
+                        verify_ecg_data, _ = generate_ecg_ppg_data(num_samples=10, base_heart_rate=70 + random.uniform(-5, 5))
+                        
+                        # 重塑为LSTM需要的格式 [1, sequence_length, 1]
+                        verify_ecg_data = verify_ecg_data.reshape(1, 10, 1)
+                        
+                        # 使用模型进行验证
+                        model.eval()
+                        with torch.no_grad():
+                            device = next(model.parameters()).device
+                            verify_tensor = torch.FloatTensor(verify_ecg_data).to(device)
+                            
+                            # 使用模块化的身份验证函数
+                            auth_result = authenticate_single_signal(
+                                model=model,
+                                input_signal=verify_tensor,
+                                threshold=admin_config['model_threshold'],
+                                signal_type='ecg',
+                                device=device
+                            )
+                            confidence = auth_result['score']
+                            authenticated = auth_result['authenticated']
+                        
+                        # 确定验证结果
+                        success = authenticated
+                        verification_details = {
+                            'confidence': float(confidence),
+                            'threshold': float(admin_config['model_threshold']),
+                            'authenticated': success
+                        }
+                        
+                        # 使用管理员配置的阈值
+                        if auth_result['authenticated']:
+                            with registration_lock:
+                                current_registration_data[username]['verification_success'] += 1
+                                verification_success += 1
+                        
+                        logger.info(f"验证 {i+1} 结果: 置信度 {confidence:.4f}")
+                        
+                        # 验证间隔
+                        time.sleep(2)
                     
-                    logger.info(f"用户 {username} 注册成功 (模拟模式)")
-            
+                    # 检查验证结果，使用管理员配置的最小成功次数
+                    min_verification_success = admin_config['min_verification_success']
+                    if verification_success >= min_verification_success:
+                        # 更新注册状态
+                        with registration_lock:
+                            current_registration_data[username]['status'] = 'completed'
+                            current_registration_data[username]['model_path'] = model_path
+                        
+                        # 保存用户到数据库
+                        mongo.db.users.insert_one({
+                            'username': username,
+                            'model_path': model_path,
+                            'created_at': datetime.now()
+                        })
+                        
+                        logger.info(f"用户 {username} 注册成功")
+                    else:
+                        # 验证失败
+                        with registration_lock:
+                            current_registration_data[username]['status'] = 'failed'
+                        
+                        logger.warning(f"用户 {username} 验证失败")
+                
+                except Exception as e:
+                    logger.error(f"模型训练/验证失败: {str(e)}")
+                    with registration_lock:
+                        current_registration_data[username]['status'] = 'error'
+            else:
+                # 如果系统不可用，使用模拟验证
+                with registration_lock:
+                    current_registration_data[username]['status'] = 'verifying'
+                
+                # 模拟验证
+                verification_success = 0
+                for i in range(3):
+                    with registration_lock:
+                        current_registration_data[username]['verification_count'] += 1
+                        current_registration_data[username]['verification_success'] += 1
+                        verification_success += 1
+                    time.sleep(2)
+                
+                # 模拟模型文件
+                model_filename = f"{username}_model.pth"
+                model_path = os.path.join(models_dir, model_filename)
+                with open(model_path, 'w') as f:
+                    f.write("模拟模型文件")
+                
+                # 更新注册状态
+                with registration_lock:
+                    current_registration_data[username]['status'] = 'completed'
+                    current_registration_data[username]['model_path'] = model_path
+                
+                # 保存用户到数据库
+                mongo.db.users.insert_one({
+                    'username': username,
+                    'model_path': model_path,
+                    'created_at': datetime.now()
+                })
+                
+                logger.info(f"用户 {username} 注册成功 (模拟模式)")
+        
         except Exception as e:
             logger.error(f"数据采集线程错误: {e}")
             with registration_lock:
@@ -1683,6 +1683,7 @@ def start_verification():
                     notify_enabled = False
                     collection_complete = False
                     collection_event = threading.Event()
+                    data_collected_successfully = False  # 添加标志，表示是否已成功采集数据
                     
                     # 检查设备类型并选择数据收集方式
                     if device_type == 'serial':
@@ -1700,31 +1701,93 @@ def start_verification():
                                 use_simulated_data = False
                             
                             if not use_simulated_data:
-                                # 收集验证所需的数据（60个点）
-                                for i in range(60):
-                                    # 获取心率值
-                                    heart_rate = EnvironmentManager.get_serial_heart_rate()
+                                # 创建一个后台线程持续读取数据到缓冲区
+                                data_ready_event = threading.Event()
+                                stop_collection = threading.Event()
+                                buffer_lock = threading.Lock()
+                                data_buffer = []
+                                
+                                def buffer_collector():
+                                    nonlocal data_buffer
+                                    while not stop_collection.is_set():
+                                        try:
+                                            # 读取一个数据包
+                                            heart_rate = EnvironmentManager.get_serial_heart_rate()
+                                            if heart_rate > 0:
+                                                # 获取完整数据包的所有信息
+                                                with buffer_lock:
+                                                    data_buffer.append(heart_rate)
+                                                    
+                                                # 每采集到10个有效数据包，发出信号
+                                                if len(data_buffer) % 10 == 0:
+                                                    data_ready_event.set()
+                                                    
+                                            # 短暂休眠，避免占用过高CPU
+                                            time.sleep(0.01)  # 10ms，足够捕获50个包/秒
+                                        except Exception as e:
+                                            logger.error(f"验证：数据采集错误: {str(e)}")
+                                            time.sleep(0.1)
+                                
+                                # 启动缓冲区收集器
+                                collector_thread = threading.Thread(target=buffer_collector, daemon=True)
+                                collector_thread.start()
+                                logger.info("验证：启动串口数据持续采集线程")
+                                
+                                # 主线程处理数据，将原始数据转换为特征
+                                collection_time_seconds = 15  # 固定采集30秒数据(验证需要的时间比注册短)
+                                logger.info(f"验证：开始固定时间采集: {collection_time_seconds}秒")
+                                
+                                # 处理缓冲区数据
+                                processed_count = 0
+                                start_time = time.time()
+                                
+                                # 只根据时间来判断是否继续采集，不再考虑数据点数量
+                                while (time.time() - start_time) < collection_time_seconds:
+                                    # 等待新数据或超时
+                                    data_ready_event.wait(timeout=1.0)
+                                    data_ready_event.clear()
                                     
-                                    if heart_rate > 0:
-                                        # 生成验证用的ECG数据
-                                        ecg_data = heart_rate_to_ecg(heart_rate)
-                                        
-                                        # 添加到收集数据
-                                        collected_data.append(ecg_data)
-                                        
-                                        # 记录进度
-                                        if len(collected_data) % 10 == 0:
-                                            logger.info(f"验证：已收集 {len(collected_data)} 个数据点")
+                                    # 处理缓冲区中的数据
+                                    with buffer_lock:
+                                        # 复制数据并清空缓冲区
+                                        current_batch = data_buffer.copy()
+                                        data_buffer.clear()
                                     
-                                    # 等待1秒
-                                    time.sleep(1)
-                                    
-                                    # 如果已收集60个数据点，标记完成
-                                    if len(collected_data) >= 60:
-                                        logger.info("验证数据采集完成，共采集60个数据点")
-                                        collection_complete = True
-                                        collection_event.set()
-                                        break
+                                    # 处理批次数据
+                                    if current_batch:
+                                        for heart_rate in current_batch:
+                                            # 生成ECG数据
+                                            ecg_data = heart_rate_to_ecg(heart_rate)
+                                            
+                                            # 添加到采集数据
+                                            collected_data.append(ecg_data)
+                                            processed_count += 1
+                                            
+                                            # 记录进度
+                                            if processed_count % 10 == 0:  # 每10个包记录一次
+                                                elapsed_time = time.time() - start_time
+                                                logger.info(f"验证：已采集 {processed_count} 个数据点，已用时间 {elapsed_time:.2f} 秒")
+                                            
+                                            # 不再根据数据点数量提前结束数据采集
+                                            # 而是让固定时间采集完成
+                                
+                                # 停止收集器线程
+                                stop_collection.set()
+                                collector_thread.join(timeout=2.0)
+                                
+                                # 记录采集结果
+                                actual_collection_time = time.time() - start_time
+                                logger.info(f"验证：数据采集完成，共采集 {processed_count} 个数据点，耗时 {actual_collection_time:.2f} 秒")
+                                
+                                # 无论采集了多少数据，只要时间到了或采集了足够数据就标记完成
+                                if processed_count > 0:
+                                    logger.info(f"验证：采集了 {processed_count} 个数据点，数据采集成功")
+                                    collection_complete = True
+                                    collection_event.set()
+                                    data_collected_successfully = True  # 标记数据已成功采集
+                                else:
+                                    # 没有采集到任何数据，使用模拟数据
+                                    logger.warning("验证：未采集到数据，将使用模拟数据")
                                 
                                 # 如果数据不足，使用模拟数据补充
                                 if len(collected_data) < 60:
@@ -1770,7 +1833,8 @@ def start_verification():
                             logger.info(f"验证：已生成 {len(collected_data)} 个模拟数据点")
                             collection_complete = True
                             collection_event.set()
-                    else:
+                    # 如果串口数据已成功采集，则跳过BLE采集过程
+                    elif not data_collected_successfully:
                         # 使用BLE设备收集验证数据
                         # 添加事件状态检查函数，方便调试
                         def check_event_status():
