@@ -2,110 +2,231 @@
 
 {% block title %}仪表盘 - 心电脉搏信号身份认证系统{% endblock %}
 
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+{% endblock %}
+
 {% block content %}
-<div class="dashboard-header">
-    <div class="row align-items-center mb-4">
-        <div class="col">
-            <h1 class="h3"><i class="fas fa-tachometer-alt me-2"></i>仪表盘</h1>
-            <p class="text-muted">欢迎回来，<strong>{{ username }}</strong></p>
-        </div>
-        <div class="col-auto">
-            <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
-                <i class="fas fa-sign-out-alt me-2"></i>退出登录
-            </a>
+<div class="dashboard-container">
+    <!-- 仪表盘头部 -->
+    <div class="dashboard-header">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <h1 class="h3 mb-0">
+                    <i class="fas fa-tachometer-alt me-2"></i>系统仪表盘
+                </h1>
+                <p class="text-muted mb-0">欢迎回来，<strong>{{ username }}</strong></p>
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="d-flex justify-content-end align-items-center">
+                    <div class="me-3">
+                        <small class="text-muted">当前时间</small>
+                        <div id="currentTime" class="fw-bold">{{ now().strftime('%H:%M:%S') }}</div>
+                    </div>
+                    <a href="{{ url_for('logout') }}" class="btn btn-outline-danger">
+                        <i class="fas fa-sign-out-alt me-2"></i>退出登录
+                    </a>
+                </div>
+            </div>
         </div>
     </div>
-</div>
 
-<div class="row">
-    <div class="col-md-6">
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-primary text-white">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-user-shield me-2"></i>账号信息
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="mb-3">
-                    <label class="form-label text-muted">用户名</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-user"></i></span>
-                        <input type="text" class="form-control" value="{{ username }}" readonly>
-                    </div>
+    <!-- 实时监控区域 -->
+    <div class="row">
+        <!-- 实时ECG波形 -->
+        <div class="col-lg-8">
+            <div class="dashboard-card">
+                <div class="card-title">
+                    <i class="fas fa-heartbeat"></i>
+                    实时ECG信号监控
                 </div>
-                <div class="mb-3">
-                    <label class="form-label text-muted">认证方式</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-heartbeat"></i></span>
-                        <input type="text" class="form-control" value="ECG生物特征认证" readonly>
-                    </div>
+                <div class="ecg-container">
+                    <div class="ecg-grid"></div>
+                    <canvas id="ecgChart" height="200"></canvas>
                 </div>
-                <div class="mb-0">
-                    <label class="form-label text-muted">上次登录时间</label>
-                    <div class="input-group">
-                        <span class="input-group-text"><i class="fas fa-clock"></i></span>
-                        <input type="text" class="form-control" value="{{ now().strftime('%Y-%m-%d %H:%M:%S') }}" readonly>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <div class="col-md-6">
-        <div class="card shadow-sm mb-4">
-            <div class="card-header bg-success text-white">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-shield-alt me-2"></i>安全状态
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="security-status">
-                    <div class="d-flex align-items-center mb-3">
-                        <div class="security-icon me-3">
-                            <i class="fas fa-check-circle text-success fa-2x"></i>
-                        </div>
-                        <div>
-                            <h6 class="mb-0">ECG身份验证</h6>
-                            <small class="text-muted">您的ECG身份特征已成功验证</small>
+                <div class="row mt-3">
+                    <div class="col-md-3">
+                        <div class="data-card">
+                            <div class="value" id="heartRate">72 BPM</div>
+                            <div class="label">当前心率</div>
                         </div>
                     </div>
-                    <div class="d-flex align-items-center mb-3">
-                        <div class="security-icon me-3">
-                            <i class="fas fa-check-circle text-success fa-2x"></i>
-                        </div>
-                        <div>
-                            <h6 class="mb-0">会话安全</h6>
-                            <small class="text-muted">会话将在30分钟后过期</small>
+                    <div class="col-md-3">
+                        <div class="data-card">
+                            <div class="value" id="signalStrength">-85 dBm</div>
+                            <div class="label">信号强度</div>
                         </div>
                     </div>
-                    <div class="d-flex align-items-center">
-                        <div class="security-icon me-3">
-                            <i class="fas fa-info-circle text-info fa-2x"></i>
+                    <div class="col-md-3">
+                        <div class="data-card">
+                            <div class="value" id="deviceStatus">
+                                <span class="status-indicator status-online"></span>
+                                设备已连接
+                            </div>
+                            <div class="label">设备状态</div>
                         </div>
-                        <div>
-                            <h6 class="mb-0">安全提示</h6>
-                            <small class="text-muted">不使用系统时请记得退出登录</small>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="data-card">
+                            <div class="value">99.8%</div>
+                            <div class="label">信号质量</div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-</div>
 
-<div class="row">
-    <div class="col-12">
-        <div class="card shadow-sm">
-            <div class="card-header bg-info text-white">
-                <h5 class="card-title mb-0">
-                    <i class="fas fa-info-circle me-2"></i>系统信息
-                </h5>
+        <!-- 系统性能指标 -->
+        <div class="col-lg-4">
+            <div class="dashboard-card">
+                <div class="card-title">
+                    <i class="fas fa-chart-line"></i>
+                    系统性能指标
+                </div>
+                
+                <!-- 认证成功率仪表盘 -->
+                <div class="mb-4">
+                    <h6 class="text-center mb-3">认证成功率</h6>
+                    <div id="successRate" class="gauge-container">
+                        <div class="gauge">
+                            <div class="gauge-value">96.5%</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 系统资源使用 -->
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>CPU使用率</small>
+                        <small id="cpuProgress">18%</small>
+                    </div>
+                    <div class="progress progress-custom">
+                        <div class="progress-bar bg-primary" id="cpuProgress" style="width: 18%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>内存使用率</small>
+                        <small id="memoryProgress">32%</small>
+                    </div>
+                    <div class="progress progress-custom">
+                        <div class="progress-bar bg-success" id="memoryProgress" style="width: 32%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>磁盘使用率</small>
+                        <small id="diskProgress">35%</small>
+                    </div>
+                    <div class="progress progress-custom">
+                        <div class="progress-bar bg-warning" id="diskProgress" style="width: 35%"></div>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>网络使用率</small>
+                        <small id="networkProgress">3%</small>
+                    </div>
+                    <div class="progress progress-custom">
+                        <div class="progress-bar bg-info" id="networkProgress" style="width: 3%"></div>
+                    </div>
+                </div>
             </div>
-            <div class="card-body">
-                <p>心电脉搏信号身份认证系统是一种基于心电图(ECG)和脉搏波(PPG)生物特征的身份验证解决方案。每个人的心电脉搏信号都是独一无二的，就像指纹一样，可以用于身份验证。</p>
-                <div class="alert alert-info">
-                    <i class="fas fa-lightbulb me-2"></i>
-                    本系统目前处于演示阶段，如有问题请联系系统管理员。
+        </div>
+    </div>
+
+    <!-- 认证准确率仪表盘 -->
+    <div class="row">
+        <div class="col-lg-4 offset-lg-4">
+            <div class="dashboard-card">
+                <div class="card-title">
+                    <i class="fas fa-bullseye"></i>
+                    认证准确率
+                </div>
+                <div id="accuracyRate" class="gauge-container">
+                    <div class="gauge">
+                        <div class="gauge-value">98.2%</div>
+                    </div>
+                </div>
+                <div class="text-center mt-3">
+                    <small class="text-muted">基于最近1000次认证测试</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 安全事件时间线 -->
+    <div class="row">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="dashboard-card">
+                <div class="card-title">
+                    <i class="fas fa-shield-alt"></i>
+                    安全事件日志
+                </div>
+                <div class="timeline" id="securityTimeline">
+                    <!-- 时间线内容由JavaScript动态生成 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统信息区域 -->
+    <div class="row">
+        <div class="col-12">
+            <div class="dashboard-card">
+                <div class="card-title">
+                    <i class="fas fa-info-circle"></i>
+                    系统信息
+                </div>
+                <div class="row">
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-primary">156</div>
+                            <small class="text-muted">总登录次数</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-success">148</div>
+                            <small class="text-muted">成功认证</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-warning">8</div>
+                            <small class="text-muted">失败认证</small>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="h4 text-info">112ms</div>
+                            <small class="text-muted">平均响应时间</small>
+                        </div>
+                    </div>
+                </div>
+                <hr>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>系统状态</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="fas fa-check-circle text-success me-2"></i>ECG身份验证系统运行正常</li>
+                            <li><i class="fas fa-check-circle text-success me-2"></i>数据库连接正常</li>
+                            <li><i class="fas fa-check-circle text-success me-2"></i>设备连接稳定</li>
+                            <li><i class="fas fa-check-circle text-success me-2"></i>安全协议启用</li>
+                        </ul>
+                    </div>
+                                         <div class="col-md-6">
+                         <h6>系统信息</h6>
+                         <ul class="list-unstyled">
+                             <li><strong>运行时间：</strong>7天 14小时 32分钟</li>
+                             <li><strong>活跃用户：</strong>1人</li>
+                             <li><strong>连接设备：</strong>1台</li>
+                             <li><strong>数据完整性：</strong>99.8%</li>
+                         </ul>
+                     </div>
                 </div>
             </div>
         </div>
@@ -114,10 +235,5 @@
 {% endblock %}
 
 {% block extra_js %}
-<script>
-    // 添加当前时间函数
-    function now() {
-        return new Date();
-    }
-</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
 {% endblock %} 

@@ -2317,6 +2317,71 @@ def logout():
     session.pop('username', None)
     return redirect(url_for('index'))
 
+# API: 获取仪表盘模拟数据
+@app.route('/api/dashboard_data')
+def get_dashboard_data():
+    """获取仪表盘模拟数据"""
+    if 'username' not in session:
+        return jsonify({'error': '未登录'}), 401
+    
+    import random
+    from datetime import datetime, timedelta
+    
+    # 生成模拟数据
+    data = {
+        'user_stats': {
+            'total_logins': random.randint(150, 200),
+            'successful_auths': random.randint(140, 190),
+            'failed_auths': random.randint(5, 15),
+            'avg_response_time': random.randint(100, 150)
+        },
+        'system_stats': {
+            'uptime': '7天 14小时 32分钟',
+            'active_users': 1,
+            'total_devices': 1,
+            'data_integrity': round(random.uniform(99.5, 99.9), 1)
+        },
+        'performance_data': {
+            'success_rate': round(random.uniform(94, 99), 1),
+            'accuracy_rate': round(random.uniform(97, 99), 1),
+            'response_time': random.randint(80, 120)
+        },
+        'security_events': [
+            {
+                'time': (datetime.now() - timedelta(minutes=2)).strftime('%H:%M:%S'),
+                'event': '用户认证成功',
+                'status': 'success'
+            },
+            {
+                'time': (datetime.now() - timedelta(minutes=4)).strftime('%H:%M:%S'),
+                'event': 'ECG信号采集完成',
+                'status': 'success'
+            },
+            {
+                'time': (datetime.now() - timedelta(minutes=6)).strftime('%H:%M:%S'),
+                'event': '设备连接建立',
+                'status': 'success'
+            },
+            {
+                'time': (datetime.now() - timedelta(minutes=8)).strftime('%H:%M:%S'),
+                'event': '系统自检完成',
+                'status': 'success'
+            },
+            {
+                'time': (datetime.now() - timedelta(minutes=12)).strftime('%H:%M:%S'),
+                'event': '用户登录尝试',
+                'status': 'warning'
+            },
+            {
+                'time': (datetime.now() - timedelta(minutes=15)).strftime('%H:%M:%S'),
+                'event': '系统启动完成',
+                'status': 'success'
+            }
+        ]
+    }
+    
+    return jsonify(data)
+
 # 隐藏管理员入口
 @app.route('/manage/login', methods=['GET', 'POST'])
 def admin_login():
@@ -2355,61 +2420,51 @@ def update_params():
         
         if SYSTEM_AVAILABLE:
             if section == 'model':
-                # 更新模型参数
+                # 更新所有参数（新的统一表单）
+                # 模型参数
                 model_threshold = float(request.form.get('model_threshold', 0.8))
                 alpha = float(request.form.get('alpha', 0.6))
                 beta = float(request.form.get('beta', 0.4))
                 
-                dynamic_config.set('model', 'threshold', model_threshold)
-                dynamic_config.set('model', 'alpha', alpha)
-                dynamic_config.set('model', 'beta', beta)
-                
-                flash('模型参数更新成功')
-            
-            elif section == 'verification':
-                # 更新验证参数
+                # 验证参数
                 verification_time = int(request.form.get('verification_time', 30))
                 min_verification_success = int(request.form.get('min_verification_success', 2))
                 total_verification_count = int(request.form.get('total_verification_count', 3))
+                
+                # 设备参数
+                connection_timeout = float(request.form.get('device_connection_timeout', 10.0))
+                scan_timeout = float(request.form.get('device_scan_timeout', 5.0))
+                
+                # 训练参数
+                epochs = int(request.form.get('training_epochs', 50))
+                learning_rate = float(request.form.get('training_learning_rate', 0.001))
+                batch_size = int(request.form.get('training_batch_size', 32))
+                
+                # 系统参数
+                use_cuda_str = request.form.get('system_use_cuda', 'true')
+                use_cuda = (use_cuda_str.lower() == 'true')
+                cuda_device = int(request.form.get('system_cuda_device', 0))
+                
+                # 批量更新所有参数
+                dynamic_config.set('model', 'threshold', model_threshold)
+                dynamic_config.set('model', 'alpha', alpha)
+                dynamic_config.set('model', 'beta', beta)
                 
                 dynamic_config.set('verification', 'time', verification_time)
                 dynamic_config.set('verification', 'min_success', min_verification_success)
                 dynamic_config.set('verification', 'total_count', total_verification_count)
                 
-                flash('验证参数更新成功')
-            
-            elif section == 'device':
-                # 更新设备参数
-                connection_timeout = float(request.form.get('device_connection_timeout', 10.0))
-                scan_timeout = float(request.form.get('device_scan_timeout', 5.0))
-                
                 dynamic_config.set('device', 'connection_timeout', connection_timeout)
                 dynamic_config.set('device', 'scan_timeout', scan_timeout)
-                
-                flash('设备参数更新成功')
-            
-            elif section == 'training':
-                # 更新训练参数
-                epochs = int(request.form.get('training_epochs', 50))
-                learning_rate = float(request.form.get('training_learning_rate', 0.001))
-                batch_size = int(request.form.get('training_batch_size', 32))
                 
                 dynamic_config.set('training', 'epochs', epochs)
                 dynamic_config.set('training', 'learning_rate', learning_rate)
                 dynamic_config.set('training', 'batch_size', batch_size)
                 
-                flash('训练参数更新成功')
-            
-            elif section == 'system':
-                # 更新系统参数
-                use_cuda_str = request.form.get('system_use_cuda', 'true')
-                use_cuda = (use_cuda_str.lower() == 'true')
-                cuda_device = int(request.form.get('system_cuda_device', 0))
-                
                 dynamic_config.set('system', 'use_cuda', use_cuda)
                 dynamic_config.set('system', 'cuda_device', cuda_device)
                 
-                flash('系统参数更新成功')
+                flash('所有系统参数更新成功')
             
             # 重新加载本地配置
             global admin_config

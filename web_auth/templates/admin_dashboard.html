@@ -5,24 +5,309 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>管理员仪表盘</title>
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body {
-            background-color: #f8f9fa;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             padding-top: 3rem;
+            min-height: 100vh;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
         }
         .card {
-            margin-bottom: 1.5rem;
+            margin-bottom: 2rem;
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            background: rgba(255, 255, 255, 0.95);
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 16px 16px 0 0 !important;
+            border: none;
+            padding: 1.5rem;
+        }
+        .card-header h5 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+        .card-body {
+            padding: 2rem;
         }
         .nav-tabs {
-            margin-bottom: 1rem;
+            margin-bottom: 2rem;
+            border: none;
+            background: rgba(255, 255, 255, 0.9);
+            border-radius: 12px;
+            padding: 0.5rem;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+        .nav-tabs .nav-link {
+            border: none;
+            border-radius: 8px;
+            margin: 0 0.25rem;
+            color: #6c757d;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .nav-tabs .nav-link:hover {
+            background-color: rgba(102, 126, 234, 0.1);
+            color: #667eea;
+        }
+        .nav-tabs .nav-link.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        .navbar {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%) !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        .navbar-brand {
+            font-weight: 600;
+            font-size: 1.25rem;
+        }
+        .form-control {
+            border-radius: 8px;
+            border: 2px solid #e9ecef;
+            padding: 0.75rem 1rem;
+            font-size: 0.95rem;
+            transition: all 0.3s ease;
+        }
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        .form-label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
+        .btn {
+            border-radius: 8px;
+            padding: 0.75rem 1.5rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+        }
+        .btn-warning {
+            background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%);
+            border: none;
+            color: white;
+        }
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(243, 156, 18, 0.4);
+        }
+        .alert {
+            border-radius: 12px;
+            border: none;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+        .table {
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+        }
+        .table thead th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            font-weight: 600;
+            padding: 1rem;
+        }
+        .table tbody td {
+            padding: 1rem;
+            border-color: #e9ecef;
+        }
+        .section-title {
+            color: #667eea;
+            font-weight: 600;
+            font-size: 1.5rem;
+            margin: 2rem 0 1.5rem 0;
+            padding-bottom: 0.5rem;
+            border-bottom: 3px solid #667eea;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .section-title:hover {
+            color: #764ba2;
+            transform: translateX(10px);
+        }
+        .section-title::after {
+            content: '';
+            position: absolute;
+            bottom: -3px;
+            left: 0;
+            width: 50px;
+            height: 3px;
+            background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+            transition: width 0.3s ease;
+        }
+        .section-title:hover::after {
+            width: 80px;
+        }
+        .parameter-group {
+            background: rgba(255, 255, 255, 0.8);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .parameter-group::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+        }
+        .parameter-group:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
+            border-color: rgba(102, 126, 234, 0.3);
+        }
+        .parameter-group:hover::before {
+            width: 8px;
+        }
+        .parameter-group h6 {
+            color: #495057;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+        }
+        .parameter-group h6::before {
+            content: '⚙️';
+            margin-right: 0.5rem;
+            font-size: 1rem;
+        }
+        .form-text {
+            color: #6c757d;
+            font-size: 0.85rem;
+            margin-top: 0.5rem;
+            font-style: italic;
+        }
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+            transform: scale(1.02);
+        }
+        .form-control.is-invalid {
+            border-color: #dc3545;
+            box-shadow: 0 0 0 0.2rem rgba(220, 53, 69, 0.25);
+        }
+        .form-control.is-valid {
+            border-color: #28a745;
+            box-shadow: 0 0 0 0.2rem rgba(40, 167, 69, 0.25);
+        }
+        .form-group.focused .form-label {
+            color: #667eea;
+            font-weight: 700;
+        }
+        /* 加载动画 */
+        .loading {
+            position: relative;
+            overflow: hidden;
+        }
+        .loading::after {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+            animation: loading 1.5s infinite;
+        }
+        @keyframes loading {
+            0% { left: -100%; }
+            100% { left: 100%; }
+        }
+        /* 响应式优化 */
+        @media (max-width: 768px) {
+            .container {
+                padding: 0 1rem;
+            }
+            .card-body {
+                padding: 1.5rem;
+            }
+            .parameter-group {
+                padding: 1.5rem;
+                margin-bottom: 1.5rem;
+            }
+            .section-title {
+                font-size: 1.3rem;
+                margin: 1.5rem 0 1rem 0;
+            }
+            .btn-lg {
+                padding: 0.75rem 1.5rem;
+                font-size: 1rem;
+            }
+        }
+        @media (max-width: 576px) {
+            .form-row {
+                margin: 0;
+            }
+            .form-group {
+                margin-bottom: 1rem;
+            }
+            .nav-tabs {
+                flex-wrap: wrap;
+            }
+            .nav-tabs .nav-link {
+                margin: 0.25rem;
+                font-size: 0.9rem;
+            }
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+            position: relative;
+            overflow: hidden;
+        }
+        .btn-primary::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+        .btn-primary:hover::before {
+            left: 100%;
+        }
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
         }
     </style>
 </head>
 <body>
-    <nav class="navbar navbar-expand-md navbar-dark bg-dark fixed-top">
+    <nav class="navbar navbar-expand-md navbar-dark fixed-top">
         <div class="container">
             <a class="navbar-brand" href="#">心电脉搏信号身份认证系统管理</a>
             <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarNav">
@@ -52,19 +337,7 @@
 
         <ul class="nav nav-tabs" id="adminTabs" role="tablist">
             <li class="nav-item">
-                <a class="nav-link active" id="parameters-tab" data-toggle="tab" href="#parameters" role="tab">模型参数</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" id="verification-tab" data-toggle="tab" href="#verification" role="tab">验证参数</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" id="device-tab" data-toggle="tab" href="#device" role="tab">设备参数</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" id="training-tab" data-toggle="tab" href="#training" role="tab">训练参数</a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" id="system-tab" data-toggle="tab" href="#system" role="tab">系统参数</a>
+                <a class="nav-link active" id="parameters-tab" data-toggle="tab" href="#parameters" role="tab">系统配置</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link" id="users-tab" data-toggle="tab" href="#users" role="tab">用户管理</a>
@@ -75,154 +348,127 @@
         </ul>
 
         <div class="tab-content" id="adminTabContent">
-            <!-- 模型参数配置 -->
+            <!-- 系统配置 -->
             <div class="tab-pane fade show active" id="parameters" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>模型参数配置</h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ url_for('update_params') }}">
-                            <input type="hidden" name="section" value="model">
-                            <div class="form-row">
-                                <div class="form-group col-md-4">
-                                    <label for="model_threshold">模型认证阈值</label>
-                                    <input type="number" step="0.01" min="0" max="1" class="form-control" id="model_threshold" name="model_threshold" value="{{ config.model_threshold }}" required>
-                                    <small class="form-text text-muted">认证模型输出阈值 (0-1)</small>
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="alpha">阿尔法 (α)</label>
-                                    <input type="number" step="0.01" min="0" max="1" class="form-control" id="alpha" name="alpha" value="{{ config.alpha }}" required>
-                                    <small class="form-text text-muted">模型融合参数 α (0-1)</small>
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="beta">贝塔 (β)</label>
-                                    <input type="number" step="0.01" min="0" max="1" class="form-control" id="beta" name="beta" value="{{ config.beta }}" required>
-                                    <small class="form-text text-muted">模型融合参数 β (0-1)</small>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">更新模型参数</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 验证参数配置 -->
-            <div class="tab-pane fade" id="verification" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>验证参数配置</h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ url_for('update_params') }}">
-                            <input type="hidden" name="section" value="verification">
-                            <div class="form-row">
-                                <div class="form-group col-md-4">
-                                    <label for="verification_time">注册采集时间 (秒)</label>
-                                    <input type="number" min="10" max="120" class="form-control" id="verification_time" name="verification_time" value="{{ config.verification_time }}" required>
-                                    <small class="form-text text-muted">注册时数据采集时长</small>
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="min_verification_success">最小验证成功次数</label>
-                                    <input type="number" min="1" max="10" class="form-control" id="min_verification_success" name="min_verification_success" value="{{ config.min_verification_success }}" required>
-                                    <small class="form-text text-muted">注册时需成功的最小验证次数</small>
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="total_verification_count">总验证次数</label>
-                                    <input type="number" min="1" max="10" class="form-control" id="total_verification_count" name="total_verification_count" value="{{ config.total_verification_count }}" required>
-                                    <small class="form-text text-muted">注册时总验证次数</small>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">更新验证参数</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 设备参数配置 -->
-            <div class="tab-pane fade" id="device" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>设备参数配置</h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ url_for('update_params') }}">
-                            <input type="hidden" name="section" value="device">
-                            <div class="form-row">
-                                <div class="form-group col-md-6">
-                                    <label for="device_connection_timeout">设备连接超时时间 (秒)</label>
-                                    <input type="number" step="0.5" min="1" max="60" class="form-control" id="device_connection_timeout" name="device_connection_timeout" value="{{ config.device_connection_timeout }}" required>
-                                    <small class="form-text text-muted">设备连接的最大等待时间</small>
-                                </div>
-                                <div class="form-group col-md-6">
-                                    <label for="device_scan_timeout">设备扫描超时时间 (秒)</label>
-                                    <input type="number" step="0.5" min="1" max="30" class="form-control" id="device_scan_timeout" name="device_scan_timeout" value="{{ config.device_scan_timeout }}" required>
-                                    <small class="form-text text-muted">扫描蓝牙设备的最大等待时间</small>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">更新设备参数</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 训练参数配置 -->
-            <div class="tab-pane fade" id="training" role="tabpanel">
-                <div class="card">
-                    <div class="card-header">
-                        <h5>训练参数配置</h5>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST" action="{{ url_for('update_params') }}">
-                            <input type="hidden" name="section" value="training">
-                            <div class="form-row">
-                                <div class="form-group col-md-4">
-                                    <label for="training_epochs">训练轮数</label>
-                                    <input type="number" min="10" max="500" class="form-control" id="training_epochs" name="training_epochs" value="{{ config.training_epochs }}" required>
-                                    <small class="form-text text-muted">模型训练的轮数</small>
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="training_learning_rate">学习率</label>
-                                    <input type="number" step="0.0001" min="0.0001" max="0.1" class="form-control" id="training_learning_rate" name="training_learning_rate" value="{{ config.training_learning_rate }}" required>
-                                    <small class="form-text text-muted">模型训练的学习率</small>
-                                </div>
-                                <div class="form-group col-md-4">
-                                    <label for="training_batch_size">批处理大小</label>
-                                    <input type="number" min="1" max="256" class="form-control" id="training_batch_size" name="training_batch_size" value="{{ config.training_batch_size }}" required>
-                                    <small class="form-text text-muted">训练时的批处理大小</small>
-                                </div>
-                            </div>
-                            <button type="submit" class="btn btn-primary">更新训练参数</button>
-                        </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 系统参数配置 -->
-            <div class="tab-pane fade" id="system" role="tabpanel">
                 <div class="card">
                     <div class="card-header">
                         <h5>系统参数配置</h5>
                     </div>
                     <div class="card-body">
                         <form method="POST" action="{{ url_for('update_params') }}">
-                            <input type="hidden" name="section" value="system">
-                            <div class="form-row">
-                                <div class="form-group col-md-6">
-                                    <label for="system_use_cuda">使用CUDA</label>
-                                    <select class="form-control" id="system_use_cuda" name="system_use_cuda">
-                                        <option value="true" {% if config.system_use_cuda %}selected{% endif %}>启用</option>
-                                        <option value="false" {% if not config.system_use_cuda %}selected{% endif %}>禁用</option>
-                                    </select>
-                                    <small class="form-text text-muted">是否使用GPU加速</small>
-                                </div>
-                                <div class="form-group col-md-6">
-                                    <label for="system_cuda_device">CUDA设备ID</label>
-                                    <input type="number" min="0" max="7" class="form-control" id="system_cuda_device" name="system_cuda_device" value="{{ config.system_cuda_device }}" required>
-                                    <small class="form-text text-muted">使用的CUDA设备ID（多GPU情况下）</small>
+                            <input type="hidden" name="section" value="model">
+                            
+                            <!-- 模型参数 -->
+                            <h4 class="section-title">模型参数</h4>
+                            <div class="parameter-group">
+                                <h6>认证模型配置</h6>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="model_threshold" class="form-label">模型认证阈值</label>
+                                        <input type="number" step="0.01" min="0" max="1" class="form-control" id="model_threshold" name="model_threshold" value="{{ config.model_threshold }}" required>
+                                        <small class="form-text">认证模型输出阈值 (0-1)</small>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="alpha" class="form-label">阿尔法 (α)</label>
+                                        <input type="number" step="0.01" min="0" max="1" class="form-control" id="alpha" name="alpha" value="{{ config.alpha }}" required>
+                                        <small class="form-text">模型融合参数 α (0-1)</small>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="beta" class="form-label">贝塔 (β)</label>
+                                        <input type="number" step="0.01" min="0" max="1" class="form-control" id="beta" name="beta" value="{{ config.beta }}" required>
+                                        <small class="form-text">模型融合参数 β (0-1)</small>
+                                    </div>
                                 </div>
                             </div>
-                            <button type="submit" class="btn btn-primary">更新系统参数</button>
+
+                            <!-- 验证参数 -->
+                            <h4 class="section-title">验证参数</h4>
+                            <div class="parameter-group">
+                                <h6>身份验证配置</h6>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="verification_time" class="form-label">注册采集时间 (秒)</label>
+                                        <input type="number" min="10" max="120" class="form-control" id="verification_time" name="verification_time" value="{{ config.verification_time }}" required>
+                                        <small class="form-text">注册时数据采集时长</small>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="min_verification_success" class="form-label">最小验证成功次数</label>
+                                        <input type="number" min="1" max="10" class="form-control" id="min_verification_success" name="min_verification_success" value="{{ config.min_verification_success }}" required>
+                                        <small class="form-text">注册时需成功的最小验证次数</small>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="total_verification_count" class="form-label">总验证次数</label>
+                                        <input type="number" min="1" max="10" class="form-control" id="total_verification_count" name="total_verification_count" value="{{ config.total_verification_count }}" required>
+                                        <small class="form-text">注册时总验证次数</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 设备参数 -->
+                            <h4 class="section-title">设备参数</h4>
+                            <div class="parameter-group">
+                                <h6>硬件设备配置</h6>
+                                <div class="form-row">
+                                    <div class="form-group col-md-6">
+                                        <label for="device_connection_timeout" class="form-label">设备连接超时时间 (秒)</label>
+                                        <input type="number" step="0.5" min="1" max="60" class="form-control" id="device_connection_timeout" name="device_connection_timeout" value="{{ config.device_connection_timeout }}" required>
+                                        <small class="form-text">设备连接的最大等待时间</small>
+                                    </div>
+                                    <div class="form-group col-md-6">
+                                        <label for="device_scan_timeout" class="form-label">设备扫描超时时间 (秒)</label>
+                                        <input type="number" step="0.5" min="1" max="30" class="form-control" id="device_scan_timeout" name="device_scan_timeout" value="{{ config.device_scan_timeout }}" required>
+                                        <small class="form-text">扫描蓝牙设备的最大等待时间</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 训练参数 -->
+                            <h4 class="section-title">训练参数</h4>
+                            <div class="parameter-group">
+                                <h6>模型训练配置</h6>
+                                <div class="form-row">
+                                    <div class="form-group col-md-4">
+                                        <label for="training_epochs" class="form-label">训练轮数</label>
+                                        <input type="number" min="10" max="500" class="form-control" id="training_epochs" name="training_epochs" value="{{ config.training_epochs }}" required>
+                                        <small class="form-text">模型训练的轮数</small>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="training_learning_rate" class="form-label">学习率</label>
+                                        <input type="number" step="0.0001" min="0.0001" max="0.1" class="form-control" id="training_learning_rate" name="training_learning_rate" value="{{ config.training_learning_rate }}" required>
+                                        <small class="form-text">模型训练的学习率</small>
+                                    </div>
+                                    <div class="form-group col-md-4">
+                                        <label for="training_batch_size" class="form-label">批处理大小</label>
+                                        <input type="number" min="1" max="256" class="form-control" id="training_batch_size" name="training_batch_size" value="{{ config.training_batch_size }}" required>
+                                        <small class="form-text">训练时的批处理大小</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- 系统参数 -->
+                            <h4 class="section-title">系统参数</h4>
+                            <div class="parameter-group">
+                                <h6>系统运行配置</h6>
+                                <div class="form-row">
+                                    <div class="form-group col-md-6">
+                                        <label for="system_use_cuda" class="form-label">使用CUDA</label>
+                                        <select class="form-control" id="system_use_cuda" name="system_use_cuda">
+                                            <option value="true" {% if config.system_use_cuda %}selected{% endif %}>启用</option>
+                                            <option value="false" {% if not config.system_use_cuda %}selected{% endif %}>禁用</option>
+                                        </select>
+                                        <small class="form-text">是否使用GPU加速</small>
+                                    </div>
+                                    <div class="form-group col-md-6">
+                                        <label for="system_cuda_device" class="form-label">CUDA设备ID</label>
+                                        <input type="number" min="0" max="7" class="form-control" id="system_cuda_device" name="system_cuda_device" value="{{ config.system_cuda_device }}" required>
+                                        <small class="form-text">使用的CUDA设备ID（多GPU情况下）</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="text-center mt-4">
+                                <button type="submit" class="btn btn-primary btn-lg">更新所有参数</button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -275,7 +521,7 @@
                         <form method="POST" action="{{ url_for('update_auth_result') }}">
                             <div class="form-row">
                                 <div class="form-group col-md-4">
-                                    <label for="auth_username">用户</label>
+                                    <label for="auth_username" class="form-label">用户</label>
                                     <select class="form-control" id="auth_username" name="username" required>
                                         <option value="">-- 选择用户 --</option>
                                         {% for user in users %}
@@ -284,18 +530,20 @@
                                     </select>
                                 </div>
                                 <div class="form-group col-md-4">
-                                    <label for="auth_result">认证结果</label>
+                                    <label for="auth_result" class="form-label">认证结果</label>
                                     <select class="form-control" id="auth_result" name="auth_result" required>
                                         <option value="success">认证成功</option>
                                         <option value="failed">认证失败</option>
                                     </select>
                                 </div>
                                 <div class="form-group col-md-4">
-                                    <label for="reason">修改原因</label>
+                                    <label for="reason" class="form-label">修改原因</label>
                                     <input type="text" class="form-control" id="reason" name="reason" placeholder="可选填写" value="修正误判">
                                 </div>
                             </div>
-                            <button type="submit" class="btn btn-primary">提交修改</button>
+                            <div class="text-center mt-3">
+                                <button type="submit" class="btn btn-primary">提交修改</button>
+                            </div>
                         </form>
                     </div>
                 </div>
@@ -306,5 +554,108 @@
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/popper.js@1.16.1/dist/umd/popper.min.js"></script>
     <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+    
+    <script>
+        $(document).ready(function() {
+            // 表单验证和用户体验增强
+            $('form').on('submit', function(e) {
+                var isValid = true;
+                var $form = $(this);
+                
+                // 检查必填字段
+                $form.find('input[required], select[required]').each(function() {
+                    if (!$(this).val()) {
+                        isValid = false;
+                        $(this).addClass('is-invalid');
+                    } else {
+                        $(this).removeClass('is-invalid');
+                    }
+                });
+                
+                // 数值范围验证
+                $form.find('input[type="number"]').each(function() {
+                    var $input = $(this);
+                    var value = parseFloat($input.val());
+                    var min = parseFloat($input.attr('min'));
+                    var max = parseFloat($input.attr('max'));
+                    
+                    if (!isNaN(min) && value < min) {
+                        isValid = false;
+                        $input.addClass('is-invalid');
+                    } else if (!isNaN(max) && value > max) {
+                        isValid = false;
+                        $input.addClass('is-invalid');
+                    } else {
+                        $input.removeClass('is-invalid');
+                    }
+                });
+                
+                if (!isValid) {
+                    e.preventDefault();
+                    alert('请检查输入参数，确保所有必填字段已填写且数值在有效范围内。');
+                    return false;
+                }
+                
+                // 显示加载状态
+                var $submitBtn = $form.find('button[type="submit"]');
+                var originalText = $submitBtn.text();
+                $submitBtn.text('更新中...').prop('disabled', true).addClass('loading');
+                
+                // 3秒后恢复按钮状态（防止无限等待）
+                setTimeout(function() {
+                    $submitBtn.text(originalText).prop('disabled', false).removeClass('loading');
+                }, 3000);
+            });
+            
+            // 输入框焦点效果
+            $('.form-control').on('focus', function() {
+                $(this).parent().addClass('focused');
+            }).on('blur', function() {
+                $(this).parent().removeClass('focused');
+            });
+            
+            // 参数组悬停效果
+            $('.parameter-group').hover(
+                function() {
+                    $(this).find('h6').css('color', '#667eea');
+                },
+                function() {
+                    $(this).find('h6').css('color', '#495057');
+                }
+            );
+            
+            // 选项卡切换动画
+            $('.nav-link').on('click', function() {
+                $('.tab-pane').fadeOut(200);
+                setTimeout(function() {
+                    $('.tab-pane.active').fadeIn(300);
+                }, 200);
+            });
+            
+            // 自动保存提示
+            var autoSaveTimer;
+            $('.form-control').on('input', function() {
+                clearTimeout(autoSaveTimer);
+                autoSaveTimer = setTimeout(function() {
+                    // 这里可以添加自动保存逻辑
+                    console.log('参数已更改，建议保存');
+                }, 2000);
+            });
+            
+            // 响应式表格优化
+            if ($(window).width() < 768) {
+                $('.table-responsive').addClass('table-sm');
+            }
+            
+            // 添加键盘快捷键
+            $(document).keydown(function(e) {
+                // Ctrl+S 保存
+                if (e.ctrlKey && e.keyCode === 83) {
+                    e.preventDefault();
+                    $('form').submit();
+                }
+            });
+        });
+    </script>
 </body>
 </html> 
