@@ -878,7 +878,7 @@ def start_data_collection():
                         logger.info("启动串口数据持续采集线程")
                         
                         # 主线程处理数据，将原始数据转换为特征
-                        collection_time_seconds = 90  # 固定采集90秒数据
+                        collection_time_seconds = 60  # 固定采集90秒数据
                         logger.info(f"开始固定时间采集: {collection_time_seconds}秒")
                         
                         # 处理缓冲区数据，转换成有用的特征

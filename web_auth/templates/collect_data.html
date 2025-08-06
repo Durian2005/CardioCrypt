@@ -424,13 +424,13 @@
             
             if (progress < 30) {
                 $('#collection-status').text('正在采集数据... ' + progress + '/30 秒');
-            } else if (progress < 100) {
+            } else if (progress < 80) {
                 $('#collection-status').text('正在处理数据...');
             } else {
                 clearInterval(interval);
             }
             
-            if (progress >= 100) {
+            if (progress >= 80) {
                 goToStep(4);
             }
         }, 1000);
