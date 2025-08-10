@@ -3,7 +3,8 @@
 {% block title %}注册 - 心电脉搏信号身份认证系统{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
+<div class="container mt-4">
+    <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card shadow-lg border-0 rounded-lg mt-5">
             <div class="card-header bg-primary text-white">
@@ -13,9 +14,23 @@
             </div>
             <div class="card-body">
                 <div class="text-center mb-4">
+                    <div class="register-icon mb-3">
+                        <i class="fas fa-user-plus fa-3x text-success"></i>
+                    </div>
                     <p class="lead">
-                        请输入您想要注册的用户名，然后连接ECG设备进行身份特征采集
+                        请输入您想要注册的用户名，然后连接心电设备进行身份特征采集
                     </p>
+                    <div class="register-features">
+                        <span class="badge bg-light text-dark me-2">
+                            <i class="fas fa-database me-1"></i>数据采集
+                        </span>
+                        <span class="badge bg-light text-dark me-2">
+                            <i class="fas fa-cog me-1"></i>特征提取
+                        </span>
+                        <span class="badge bg-light text-dark">
+                            <i class="fas fa-save me-1"></i>模型训练
+                        </span>
+                    </div>
                 </div>
                 <form method="post" action="{{ url_for('register') }}">
                     <div class="mb-3">
@@ -42,5 +57,6 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %} 

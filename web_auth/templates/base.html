@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}心电脉搏信号身份认证系统{% endblock %}</title>
+    <!-- 引入Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <!-- 引入Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <!-- 引入自定义CSS -->
@@ -58,30 +60,28 @@
             <div class="col-12 main-content">
             {% endif %}
                 <!-- 页面内容 -->
-                <div class="container mt-4">
-                    <!-- 闪现消息 -->
-                    {% with messages = get_flashed_messages() %}
-                        {% if messages %}
-                            {% for message in messages %}
-                            <div class="alert alert-warning alert-dismissible fade show" role="alert">
-                                {{ message }}
-                                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                            </div>
-                            {% endfor %}
-                        {% endif %}
-                    {% endwith %}
-                    
-                    <!-- 主要内容 -->
-                    {% block content %}{% endblock %}
-                </div>
+                <!-- 闪现消息 -->
+                {% with messages = get_flashed_messages() %}
+                    {% if messages %}
+                        {% for message in messages %}
+                        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- 主要内容 -->
+                {% block content %}{% endblock %}
             </div>
         </div>
     </div>
 
     <!-- 页脚 -->
-    <footer class="footer mt-auto py-3 bg-light">
+    <footer class="footer mt-auto py-3">
         <div class="container text-center">
-            <span class="text-muted">© {{ now().year }} 心电脉搏信号身份认证系统</span>
+            <span class="text-white">© {{ now().year }} 心电脉搏信号身份认证系统</span>
             <div class="mt-2">
                 <a href="{{ url_for('admin_login') }}" class="admin-link">管理入口</a>
             </div>

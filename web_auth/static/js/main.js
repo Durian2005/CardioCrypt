@@ -12,6 +12,9 @@ $(document).ready(function() {
     
     // 监听表单提交
     handleFormSubmission();
+    
+    // 初始化数据采集步骤
+    initDataCollectionSteps();
 });
 
 /**
@@ -109,4 +112,131 @@ function formatDateTime(date) {
     };
     
     return date.toLocaleString('zh-CN', options);
+}
+
+/**
+ * 初始化数据采集步骤
+ */
+function initDataCollectionSteps() {
+    const stepProgressBar = $('#step-progress-bar');
+    const steps = $('.step');
+    const stepContents = $('.step-content');
+    
+    if (stepProgressBar.length === 0) return;
+    
+    // 更新步骤进度
+    function updateStepProgress(currentStep) {
+        const progress = (currentStep / (steps.length - 1)) * 100;
+        stepProgressBar.css('width', progress + '%');
+        
+        // 更新步骤状态
+        steps.removeClass('active');
+        for (let i = 0; i <= currentStep; i++) {
+            $(steps[i]).addClass('active');
+        }
+        
+        // 显示当前步骤内容
+        stepContents.removeClass('active');
+        $(`#step-${currentStep + 1}-content`).addClass('active');
+    }
+    
+    // 初始化第一步
+    updateStepProgress(0);
+    
+    // 绑定步骤切换事件
+    window.switchToStep = function(stepNumber) {
+        updateStepProgress(stepNumber);
+    };
+    
+    // 添加步骤动画效果
+    steps.on('click', function() {
+        const stepIndex = $(this).index();
+        updateStepProgress(stepIndex);
+    });
+}
+
+/**
+ * 设备扫描功能
+ */
+function scanDevices() {
+    const devicesList = $('#devices-list');
+    const devicesListGroup = $('#devices-list-group');
+    
+    // 显示扫描中状态
+    devicesList.removeClass('d-none');
+    devicesListGroup.html(`
+        <div class="text-center py-3">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">扫描中...</span>
+            </div>
+            <p class="mt-2">正在扫描设备...</p>
+        </div>
+    `);
+    
+    // 模拟设备扫描
+    setTimeout(function() {
+        const mockDevices = [
+            { name: 'ECG-Device-001', address: '00:11:22:33:44:55', rssi: -45 },
+            { name: 'ECG-Device-002', address: '00:11:22:33:44:66', rssi: -52 },
+            { name: 'PPG-Sensor-001', address: '00:11:22:33:44:77', rssi: -48 }
+        ];
+        
+        let devicesHtml = '';
+        mockDevices.forEach(device => {
+            const signalStrength = device.rssi > -50 ? '强' : device.rssi > -60 ? '中' : '弱';
+            const signalClass = device.rssi > -50 ? 'text-success' : device.rssi > -60 ? 'text-warning' : 'text-danger';
+            
+            devicesHtml += `
+                <div class="list-group-item list-group-item-action" data-device="${device.address}">
+                    <div class="d-flex w-100 justify-content-between align-items-center">
+                        <div>
+                            <h6 class="mb-1">${device.name}</h6>
+                            <small class="text-muted">${device.address}</small>
+                        </div>
+                        <div class="text-end">
+                            <span class="badge bg-primary">${signalStrength}</span>
+                            <small class="text-muted d-block">${device.rssi} dBm</small>
+                        </div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        devicesListGroup.html(devicesHtml);
+        
+        // 绑定设备选择事件
+        devicesListGroup.find('.list-group-item').on('click', function() {
+            devicesListGroup.find('.list-group-item').removeClass('active');
+            $(this).addClass('active');
+        });
+    }, 2000);
+}
+
+/**
+ * 连接设备功能
+ */
+function connectDevice(deviceAddress) {
+    return new Promise((resolve, reject) => {
+        // 模拟连接过程
+        setTimeout(() => {
+            const success = Math.random() > 0.2; // 80%成功率
+            if (success) {
+                resolve();
+            } else {
+                reject(new Error('连接失败'));
+            }
+        }, 3000);
+    });
+}
+
+/**
+ * 数据采集功能
+ */
+function startDataCollection() {
+    return new Promise((resolve) => {
+        // 模拟数据采集过程
+        setTimeout(() => {
+            resolve();
+        }, 5000);
+    });
 } 

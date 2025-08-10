@@ -1,9 +1,25 @@
 /* 仪表盘专用样式 */
-.dashboard-container {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    min-height: 100vh;
-    padding: 20px;
-}
+        .dashboard-container-fluid {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+            width: 100%;
+            margin: 0;
+            box-sizing: border-box;
+        }
+        
+        /* 仪表盘全宽模式下的响应式调整 */
+        @media (max-width: 1200px) {
+            .dashboard-container-fluid {
+                padding: 15px;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            .dashboard-container-fluid {
+                padding: 10px;
+            }
+        }
 
 .dashboard-header {
     background: rgba(255, 255, 255, 0.95);

@@ -2348,32 +2348,32 @@ def get_dashboard_data():
         },
         'security_events': [
             {
-                'time': (datetime.now() - timedelta(minutes=2)).strftime('%H:%M:%S'),
+                'time': (datetime.now() - timedelta(seconds=15)).strftime('%H:%M:%S'),
                 'event': '用户认证成功',
                 'status': 'success'
             },
             {
-                'time': (datetime.now() - timedelta(minutes=4)).strftime('%H:%M:%S'),
+                'time': (datetime.now() - timedelta(seconds=45)).strftime('%H:%M:%S'),
                 'event': 'ECG信号采集完成',
                 'status': 'success'
             },
             {
-                'time': (datetime.now() - timedelta(minutes=6)).strftime('%H:%M:%S'),
+                'time': (datetime.now() - timedelta(seconds=75)).strftime('%H:%M:%S'),
                 'event': '设备连接建立',
                 'status': 'success'
             },
             {
-                'time': (datetime.now() - timedelta(minutes=8)).strftime('%H:%M:%S'),
+                'time': (datetime.now() - timedelta(seconds=105)).strftime('%H:%M:%S'),
                 'event': '系统自检完成',
                 'status': 'success'
             },
             {
-                'time': (datetime.now() - timedelta(minutes=12)).strftime('%H:%M:%S'),
+                'time': (datetime.now() - timedelta(seconds=135)).strftime('%H:%M:%S'),
                 'event': '用户登录尝试',
                 'status': 'warning'
             },
             {
-                'time': (datetime.now() - timedelta(minutes=15)).strftime('%H:%M:%S'),
+                'time': (datetime.now() - timedelta(seconds=150)).strftime('%H:%M:%S'),
                 'event': '系统启动完成',
                 'status': 'success'
             }

@@ -7,7 +7,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="dashboard-container">
+<div class="dashboard-container-fluid" style="margin: 0; padding: 20px; width: 100%;">
     <!-- 仪表盘头部 -->
     <div class="dashboard-header">
         <div class="row align-items-center">
@@ -138,9 +138,10 @@
         </div>
     </div>
 
-    <!-- 认证准确率仪表盘 -->
+    <!-- 认证准确率和安全事件日志 -->
     <div class="row">
-        <div class="col-lg-4 offset-lg-4">
+        <!-- 认证准确率仪表盘 -->
+        <div class="col-lg-4">
             <div class="dashboard-card">
                 <div class="card-title">
                     <i class="fas fa-bullseye"></i>
@@ -156,11 +157,9 @@
                 </div>
             </div>
         </div>
-    </div>
 
-    <!-- 安全事件时间线 -->
-    <div class="row">
-        <div class="col-lg-8 offset-lg-2">
+        <!-- 安全事件时间线 -->
+        <div class="col-lg-8">
             <div class="dashboard-card">
                 <div class="card-title">
                     <i class="fas fa-shield-alt"></i>

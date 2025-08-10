@@ -142,36 +142,36 @@ class DashboardManager {
         const timeline = document.getElementById('securityTimeline');
         if (!timeline) return;
 
-        // 基于当前时间生成事件
+        // 基于当前时间生成事件（2分半内）
         const now = new Date();
         const events = [
             { 
-                time: new Date(now.getTime() - 2 * 60 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
+                time: new Date(now.getTime() - 15 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
                 event: '用户认证成功', 
                 status: 'success' 
             },
             { 
-                time: new Date(now.getTime() - 4 * 60 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
+                time: new Date(now.getTime() - 45 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
                 event: 'ECG信号采集完成', 
                 status: 'success' 
             },
             { 
-                time: new Date(now.getTime() - 6 * 60 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
+                time: new Date(now.getTime() - 75 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
                 event: '设备连接建立', 
                 status: 'success' 
             },
             { 
-                time: new Date(now.getTime() - 8 * 60 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
+                time: new Date(now.getTime() - 105 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
                 event: '系统自检完成', 
                 status: 'success' 
             },
             { 
-                time: new Date(now.getTime() - 12 * 60 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
+                time: new Date(now.getTime() - 135 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
                 event: '用户登录尝试', 
                 status: 'warning' 
             },
             { 
-                time: new Date(now.getTime() - 15 * 60 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
+                time: new Date(now.getTime() - 150 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
                 event: '系统启动完成', 
                 status: 'success' 
             }

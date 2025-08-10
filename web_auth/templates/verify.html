@@ -3,7 +3,8 @@
 {% block title %}身份验证 - 心电脉搏信号身份认证系统{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
+<div class="container mt-4">
+    <div class="row justify-content-center">
     <div class="col-md-6">
         <div class="card shadow-lg border-0 rounded-lg mt-5">
             <div class="card-header bg-primary text-white">
@@ -60,7 +61,39 @@
                             
                             <div id="ecg-visualization" class="mt-4">
                                 <!-- ECG波形可视化 -->
-                                <svg id="ecg-wave" width="100%" height="150"></svg>
+                                <div class="ecg-container">
+                                    <div class="ecg-header">
+                                        <i class="fas fa-heartbeat text-danger"></i>
+                                        <span class="ecg-title">实时ECG信号</span>
+                                        <span class="ecg-status">正在验证...</span>
+                                    </div>
+                                    
+                                    <!-- 图表区域 -->
+                                    <div class="ecg-charts">
+                                        <!-- 心率趋势图 -->
+                                        <div class="chart-section">
+                                            <div class="chart-title">心率趋势</div>
+                                            <canvas id="heart-rate-chart" width="100%" height="120"></canvas>
+                                        </div>
+                                        
+                                        <!-- 信号强度图 -->
+                                        <div class="chart-section">
+                                            <div class="chart-title">信号强度</div>
+                                            <canvas id="signal-strength-chart" width="100%" height="120"></canvas>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="ecg-info">
+                                        <div class="ecg-metric">
+                                            <span class="metric-label">心率:</span>
+                                            <span class="metric-value" id="heart-rate">-- BPM</span>
+                                        </div>
+                                        <div class="ecg-metric">
+                                            <span class="metric-label">信号质量:</span>
+                                            <span class="metric-value text-success">优秀</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -94,6 +127,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}
 
@@ -328,47 +362,158 @@
         });
     }
     
-    // 初始化ECG波形可视化
+    // 初始化图表可视化
     function initEcgVisualization() {
-        const svg = document.getElementById('ecg-wave');
-        const width = svg.clientWidth;
-        const height = svg.clientHeight;
-        const points = [];
-        const maxPoints = 100;
+        let heartRate = 75; // 初始心率
+        let lastHeartRateUpdate = 0; // 上次心率更新时间
         
-        // 创建初始点
-        for (let i = 0; i < maxPoints; i++) {
-            points.push(50);
+        // 心率趋势数据
+        const heartRateData = [];
+        const maxHeartRatePoints = 50;
+        
+        // 信号强度数据
+        const signalStrengthData = [];
+        const maxSignalPoints = 50;
+        
+        // 初始化心率趋势图
+        function initHeartRateChart() {
+            const canvas = document.getElementById('heart-rate-chart');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            return ctx;
+        }
+        
+        // 初始化信号强度图
+        function initSignalStrengthChart() {
+            const canvas = document.getElementById('signal-strength-chart');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            canvas.width = canvas.offsetWidth;
+            canvas.height = canvas.offsetHeight;
+            
+            return ctx;
+        }
+        
+        // 绘制心率趋势图
+        function drawHeartRateChart(ctx) {
+            if (!ctx) return;
+            
+            const canvas = ctx.canvas;
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // 清空画布
+            ctx.clearRect(0, 0, width, height);
+            
+            if (heartRateData.length < 2) return;
+            
+            // 绘制网格
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = (height / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            
+            // 绘制心率曲线
+            ctx.strokeStyle = '#ff6b6b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            heartRateData.forEach((rate, index) => {
+                const x = (index / (heartRateData.length - 1)) * width;
+                const y = height - ((rate - 60) / 40) * height; // 60-100 BPM范围
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            
+            ctx.stroke();
+        }
+        
+        // 绘制信号强度图
+        function drawSignalStrengthChart(ctx) {
+            if (!ctx) return;
+            
+            const canvas = ctx.canvas;
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // 清空画布
+            ctx.clearRect(0, 0, width, height);
+            
+            if (signalStrengthData.length < 2) return;
+            
+            // 绘制网格
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 4; i++) {
+                const y = (height / 4) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(width, y);
+                ctx.stroke();
+            }
+            
+            // 绘制信号强度柱状图
+            ctx.fillStyle = '#4ecdc4';
+            const barWidth = width / signalStrengthData.length;
+            
+            signalStrengthData.forEach((strength, index) => {
+                const x = index * barWidth;
+                const barHeight = (strength / 100) * height;
+                ctx.fillRect(x, height - barHeight, barWidth - 1, barHeight);
+            });
+        }
+        
+        // 更新心率显示 - 每秒更新一次
+        function updateHeartRate() {
+            const now = Date.now();
+            if (now - lastHeartRateUpdate >= 1000) { // 每秒更新一次
+                const heartRateElement = document.getElementById('heart-rate');
+                if (heartRateElement) {
+                    // 模拟心率变化
+                    heartRate = 70 + Math.sin(now / 5000) * 10 + Math.random() * 5;
+                    heartRateElement.textContent = Math.round(heartRate) + ' BPM';
+                    
+                    // 添加到心率趋势数据
+                    heartRateData.push(Math.round(heartRate));
+                    if (heartRateData.length > maxHeartRatePoints) {
+                        heartRateData.shift();
+                    }
+                    
+                    // 添加到信号强度数据
+                    const signalStrength = 85 + Math.random() * 15; // 85-100%
+                    signalStrengthData.push(signalStrength);
+                    if (signalStrengthData.length > maxSignalPoints) {
+                        signalStrengthData.shift();
+                    }
+                }
+                lastHeartRateUpdate = now;
+            }
         }
         
         // 绘制函数
         function draw() {
             if (!$('#verification-section').hasClass('d-none')) {
-                // 生成新的点
-                const newY = 50 + Math.sin(Date.now() / 200) * 20 + Math.random() * 5;
-                points.push(newY);
-                if (points.length > maxPoints) {
-                    points.shift();
-                }
+                // 更新心率
+                updateHeartRate();
                 
-                // 清空SVG
-                svg.innerHTML = '';
-                
-                // 创建路径
-                let path = `M 0,${height - points[0]}`;
-                for (let i = 1; i < points.length; i++) {
-                    const x = (i / maxPoints) * width;
-                    const y = height - points[i];
-                    path += ` L ${x},${y}`;
-                }
-                
-                // 创建路径元素
-                const pathElement = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                pathElement.setAttribute('d', path);
-                pathElement.setAttribute('stroke', '#007bff');
-                pathElement.setAttribute('stroke-width', '2');
-                pathElement.setAttribute('fill', 'none');
-                svg.appendChild(pathElement);
+                // 绘制图表
+                const heartRateCtx = initHeartRateChart();
+                const signalCtx = initSignalStrengthChart();
+                drawHeartRateChart(heartRateCtx);
+                drawSignalStrengthChart(signalCtx);
             }
             
             // 继续动画
