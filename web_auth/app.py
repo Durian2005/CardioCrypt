@@ -2478,36 +2478,6 @@ def update_params():
         
     return redirect(url_for('admin_dashboard'))
 
-# 重新训练用户模型
-@app.route('/manage/retrain_model/<username>', methods=['POST'])
-@admin_required
-def retrain_model(username):
-    try:
-        # 获取用户信息
-        user = mongo.db.users.find_one({'username': username})
-        if not user:
-            flash(f'用户 {username} 不存在')
-            return redirect(url_for('admin_dashboard'))
-        
-        # 模拟模型重新训练
-        if SYSTEM_AVAILABLE:
-            # 在实际环境中，这里应该包含重新训练模型的代码
-            # 这里只是简单更新模型文件的修改时间作为示例
-            model_path = user['model_path']
-            with open(model_path, 'a') as f:
-                f.write(f"\n# 模型参数更新于 {datetime.now()}")
-                
-            # 更新阈值元数据
-            # 在实际实现中，应该将这些参数保存到模型文件中
-            flash(f'用户 {username} 的模型已重新训练，阈值更新为 {admin_config["model_threshold"]}')
-        else:
-            flash(f'系统模块不可用，无法重新训练模型')
-            
-        return redirect(url_for('admin_dashboard'))
-    except Exception as e:
-        logger.error(f"重新训练模型失败: {e}")
-        flash(f'重新训练模型失败: {str(e)}')
-        return redirect(url_for('admin_dashboard'))
 
 # 修改用户认证结果
 @app.route('/manage/update_auth_result', methods=['POST'])
@@ -2604,6 +2574,135 @@ def update_auth_result():
 def admin_logout():
     session.pop('admin', None)
     return redirect(url_for('index'))
+
+# 删除用户
+@app.route('/manage/delete_user/<username>', methods=['POST'])
+@admin_required
+def delete_user(username):
+    try:
+        # 安全检查：防止删除管理员用户
+        if username == ADMIN_USERNAME:
+            flash('不能删除管理员用户')
+            return redirect(url_for('admin_dashboard'))
+        
+        # 获取用户信息
+        user = mongo.db.users.find_one({'username': username})
+        if not user:
+            flash(f'用户 {username} 不存在')
+            return redirect(url_for('admin_dashboard'))
+        
+        # 删除用户的模型文件
+        if 'model_path' in user and user['model_path']:
+            try:
+                if os.path.exists(user['model_path']):
+                    os.remove(user['model_path'])
+                    logger.info(f"已删除用户 {username} 的模型文件: {user['model_path']}")
+            except Exception as e:
+                logger.warning(f"删除用户 {username} 的模型文件失败: {e}")
+        
+        # 删除数据库中的用户数据
+        # 删除用户基本信息
+        mongo.db.users.delete_one({'username': username})
+        
+        # 删除用户的认证历史记录
+        mongo.db.auth_history.delete_many({'username': username})
+        
+        # 删除用户相关的其他数据（如果有的话）
+        # 例如：用户的数据采集记录、验证记录等
+        
+        # 清理内存中的相关数据
+        with registration_lock:
+            if username in current_registration_data:
+                del current_registration_data[username]
+        
+        # 清理验证结果
+        with verification_lock:
+            if username in verification_results:
+                del verification_results[username]
+        
+        logger.info(f"用户 {username} 及其所有相关数据已成功删除")
+        flash(f'用户 {username} 已成功删除')
+        
+    except Exception as e:
+        logger.error(f"删除用户 {username} 失败: {e}")
+        flash(f'删除用户失败: {str(e)}')
+    
+    return redirect(url_for('admin_dashboard'))
+
+# 批量删除用户
+@app.route('/manage/batch_delete_users', methods=['POST'])
+@admin_required
+def batch_delete_users():
+    try:
+        # 获取要删除的用户名列表
+        usernames = request.form.getlist('usernames[]')
+        
+        if not usernames:
+            flash('请选择要删除的用户')
+            return redirect(url_for('admin_dashboard'))
+        
+        # 安全检查：防止删除管理员用户
+        if ADMIN_USERNAME in usernames:
+            flash('不能删除管理员用户')
+            return redirect(url_for('admin_dashboard'))
+        
+        deleted_count = 0
+        failed_count = 0
+        
+        for username in usernames:
+            try:
+                # 获取用户信息
+                user = mongo.db.users.find_one({'username': username})
+                if not user:
+                    failed_count += 1
+                    continue
+                
+                # 删除用户的模型文件
+                if 'model_path' in user and user['model_path']:
+                    try:
+                        if os.path.exists(user['model_path']):
+                            os.remove(user['model_path'])
+                            logger.info(f"已删除用户 {username} 的模型文件: {user['model_path']}")
+                    except Exception as e:
+                        logger.warning(f"删除用户 {username} 的模型文件失败: {e}")
+                
+                # 删除数据库中的用户数据
+                # 删除用户基本信息
+                mongo.db.users.delete_one({'username': username})
+                
+                # 删除用户的认证历史记录
+                mongo.db.auth_history.delete_many({'username': username})
+                
+                # 清理内存中的相关数据
+                with registration_lock:
+                    if username in current_registration_data:
+                        del current_registration_data[username]
+                
+                # 清理验证结果
+                with verification_lock:
+                    if username in verification_results:
+                        del verification_results[username]
+                
+                deleted_count += 1
+                logger.info(f"用户 {username} 已成功删除")
+                
+            except Exception as e:
+                logger.error(f"删除用户 {username} 失败: {e}")
+                failed_count += 1
+        
+        # 显示删除结果
+        if deleted_count > 0:
+            flash(f'成功删除 {deleted_count} 个用户')
+        if failed_count > 0:
+            flash(f'删除失败 {failed_count} 个用户')
+        
+        logger.info(f"批量删除完成：成功 {deleted_count} 个，失败 {failed_count} 个")
+        
+    except Exception as e:
+        logger.error(f"批量删除用户失败: {e}")
+        flash(f'批量删除失败: {str(e)}')
+    
+    return redirect(url_for('admin_dashboard'))
 
 # 启动应用
 if __name__ == '__main__':
