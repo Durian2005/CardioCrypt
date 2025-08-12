@@ -1734,7 +1734,7 @@ def start_verification():
                                 logger.info("验证：启动串口数据持续采集线程")
                                 
                                 # 主线程处理数据，将原始数据转换为特征
-                                collection_time_seconds = 15  # 固定采集30秒数据(验证需要的时间比注册短)
+                                collection_time_seconds = 40  # 固定采集30秒数据(验证需要的时间比注册短)
                                 logger.info(f"验证：开始固定时间采集: {collection_time_seconds}秒")
                                 
                                 # 处理缓冲区数据

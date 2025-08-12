@@ -127,7 +127,7 @@
                             <h4 class="mt-3">注册成功！</h4>
                             <p>您的ECG身份特征已成功注册</p>
                             <a href="{{ url_for('login') }}" class="btn btn-primary mt-3">
-                                <i class="fas fa-sign-in-alt me-2"></i>前往登录
+                                <i class="fas fa-sign-in-alt me-2"></i>前往认证
                             </a>
                         </div>
                         <div id="registration-failed" class="d-none">
@@ -291,8 +291,23 @@
             devices.forEach(function(device) {
                 const $deviceItem = $('<button type="button" class="list-group-item list-group-item-action"></button>');
                 
+                // 选择图标
+                let icon = 'fa-bluetooth';
+                if (device.type === 'serial') {
+                    icon = 'fa-usb';
+                }
+                
                 // 构建基本设备信息
-                let deviceHtml = `<i class="fas fa-bluetooth me-2"></i>${device.name || '未命名设备'} <small class="text-muted">(${device.address})</small>`;
+                let deviceHtml = `<i class="fas ${icon} me-2"></i>${device.name || '未命名设备'} <small class="text-muted">(${device.address})</small>`;
+                
+                // 添加设备类型标识
+                let typeBadge = '';
+                if (device.type === 'serial') {
+                    typeBadge = '<span class="badge bg-primary text-white float-end ms-1">串口</span>';
+                } else {
+                    typeBadge = '<span class="badge bg-info text-white float-end ms-1">蓝牙</span>';
+                }
+                deviceHtml += typeBadge;
                 
                 // 添加信号强度标识
                 if (device.rssi !== undefined) {
