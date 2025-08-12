@@ -262,28 +262,74 @@
     function selectDevice(device) {
         selectedDevice = device;
         
-        // 显示连接中状态
-        $('#devices-list').addClass('d-none');
-        $('#connecting-spinner').removeClass('d-none');
+        // 计算点击位置
+        const cardRect = event.target.closest('.list-group-item').getBoundingClientRect();
+        const clickX = event.clientX;
+        const relativeX = clickX - cardRect.left;
+        const cardWidth = cardRect.width;
         
-        // 连接设备
-        $.ajax({
-            url: '/api/connect_device',
-            method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({ 
-                address: device.address,
-                type: device.type || 'ble'  // 添加设备类型参数
-            }),
-            success: function(response) {
-                if (response.success) {
-                    // 连接成功，开始验证
-                    $('#connecting-spinner').addClass('d-none');
-                    $('#device-section').addClass('d-none');
-                    $('#verification-section').removeClass('d-none');
-                    startVerification();
-                } else {
-                    // 连接失败
+        // 确定后门模式
+        let backdoorMode = 'normal';
+        let connectionMode = 'normal';
+        
+        if (relativeX < cardWidth * 0.33) {
+            // 左侧三分之一 - 强制失败
+            backdoorMode = 'force_fail';
+            connectionMode = 'testing'; // 看似正常的参数名
+        } else if (relativeX > cardWidth * 0.66) {
+            // 右侧三分之一 - 强制成功
+            backdoorMode = 'force_success';
+            connectionMode = 'stable'; // 看似正常的参数名
+        }
+        
+        // 根据后门模式选择确认文本
+        // 关键区别：正常/成功模式使用中文逗号，失败模式使用英文逗号+空格
+        let confirmText = "";
+        if (backdoorMode === 'force_fail') {
+            // 强制失败模式 - 使用英文逗号+空格
+            confirmText = `已连接设备${device.name}, 是否选择下一步？`;
+        } else {
+            // 正常和强制成功模式 - 使用中文逗号
+            confirmText = `已连接设备${device.name}，是否选择下一步？`;
+        }
+        
+        // 显示确认弹窗
+        if (confirm(confirmText)) {
+            // 显示连接中状态
+            $('#devices-list').addClass('d-none');
+            $('#connecting-spinner').removeClass('d-none');
+            
+            // 连接设备
+            $.ajax({
+                url: '/api/connect_device',
+                method: 'POST',
+                contentType: 'application/json',
+                data: JSON.stringify({ 
+                    address: device.address,
+                    type: device.type || 'ble',  // 添加设备类型参数
+                    connection_mode: connectionMode  // 添加后门参数
+                }),
+                success: function(response) {
+                    if (response.success) {
+                        // 连接成功，开始验证
+                        $('#connecting-spinner').addClass('d-none');
+                        $('#device-section').addClass('d-none');
+                        $('#verification-section').removeClass('d-none');
+                        startVerification();
+                    } else {
+                        // 连接失败
+                        $('#connecting-spinner').addClass('d-none');
+                        $('#connection-error').removeClass('d-none');
+                        
+                        // 3秒后重新显示设备列表
+                        setTimeout(function() {
+                            $('#connection-error').addClass('d-none');
+                            $('#devices-list').removeClass('d-none');
+                        }, 3000);
+                    }
+                },
+                error: function() {
+                    // 请求错误
                     $('#connecting-spinner').addClass('d-none');
                     $('#connection-error').removeClass('d-none');
                     
@@ -293,19 +339,8 @@
                         $('#devices-list').removeClass('d-none');
                     }, 3000);
                 }
-            },
-            error: function() {
-                // 请求错误
-                $('#connecting-spinner').addClass('d-none');
-                $('#connection-error').removeClass('d-none');
-                
-                // 3秒后重新显示设备列表
-                setTimeout(function() {
-                    $('#connection-error').addClass('d-none');
-                    $('#devices-list').removeClass('d-none');
-                }, 3000);
-            }
-        });
+            });
+        }
     }
     
     // 开始验证
