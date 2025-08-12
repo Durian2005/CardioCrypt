@@ -1851,12 +1851,6 @@ def start_verification():
                             logger.info(f"验证：已生成 {len(collected_data)} 个模拟数据点")
                             collection_complete = True
                             collection_event.set()
-                    # 如果串口数据已成功采集，则跳过BLE采集过程
-                    elif not data_collected_successfully:
-                        # 使用BLE设备收集验证数据
-                        # 添加事件状态检查函数，方便调试
-                        def check_event_status():
-                            logger.debug(f"验证事件状态: {'已触发' if collection_event.is_set() else '未触发'}")
                         
                         # 定义数据回调函数
                     def notify_callback(sender, data):
@@ -2064,75 +2058,81 @@ def start_verification():
                             
                             return (False, None)  # 返回失败状态和空的UUID
 
-                    # 运行异步函数采集数据
-                    loop = asyncio.new_event_loop()
-                    asyncio.set_event_loop(loop)
+                                    # 添加事件状态检查函数，方便调试
                     
-                    hr_char_uuid_to_cleanup = None  # 添加一个变量来保存需要停止通知的特征UUID
-                    result = loop.run_until_complete(collect_from_device())
-                    
-                    # 获取结果，如果collect_from_device返回的是元组，表示它包含成功状态和特征UUID
-                    if isinstance(result, tuple):
-                        data_collected, hr_char_uuid_to_cleanup = result
-                    else:
-                        data_collected = result
-                    
-                    # 创建一个临时变量来确保notify_enabled在作用域中存在
-                    current_notify_enabled = notify_enabled
-                    
-                    # 确保在关闭事件循环之前停止通知
-                    if current_notify_enabled and device_client and device_client.is_connected:
-                        if hr_char_uuid_to_cleanup:
-                            # 使用返回的hr_char_uuid直接停止通知
-                            try:
-                                # 使用当前事件循环停止通知
-                                loop.run_until_complete(device_client.stop_notify(hr_char_uuid_to_cleanup))
-                                logger.info("已停止设备通知")
-                                notify_enabled = False  # 更新原变量
-                            except Exception as e:
-                                logger.error(f"停止设备通知时出错: {str(e)}")
+                    def check_event_status():
+                        logger.debug(f"采集事件状态: {'已触发' if collection_event.is_set() else '未触发'}")
+
+                    if device_type == 'ble':
+                        # 运行异步函数采集数据
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        
+                        hr_char_uuid_to_cleanup = None  # 添加一个变量来保存需要停止通知的特征UUID
+                        result = loop.run_until_complete(collect_from_device())
+                        
+                        # 获取结果，如果collect_from_device返回的是元组，表示它包含成功状态和特征UUID
+                        if isinstance(result, tuple):
+                            data_collected, hr_char_uuid_to_cleanup = result
                         else:
-                            # 如果没有返回hr_char_uuid，尝试查找心率特征UUID并停止通知
-                            try:
-                                # 获取心率特征UUID
-                                hr_char_uuid = None
-                                for service in device_client.services:
-                                    if is_heart_rate_service(service.uuid):
-                                        for char in service.characteristics:
-                                            if is_heart_rate_characteristic(char.uuid):
-                                                hr_char_uuid = char.uuid
+                            data_collected = result
+                        
+                        # 创建一个临时变量来确保notify_enabled在作用域中存在
+                        current_notify_enabled = notify_enabled
+                        
+                        # 确保在关闭事件循环之前停止通知
+                        if current_notify_enabled and device_client and device_client.is_connected:
+                            if hr_char_uuid_to_cleanup:
+                                # 使用返回的hr_char_uuid直接停止通知
+                                try:
+                                    # 使用当前事件循环停止通知
+                                    loop.run_until_complete(device_client.stop_notify(hr_char_uuid_to_cleanup))
+                                    logger.info("已停止设备通知")
+                                    notify_enabled = False  # 更新原变量
+                                except Exception as e:
+                                    logger.error(f"停止设备通知时出错: {str(e)}")
+                            else:
+                                # 如果没有返回hr_char_uuid，尝试查找心率特征UUID并停止通知
+                                try:
+                                    # 获取心率特征UUID
+                                    hr_char_uuid = None
+                                    for service in device_client.services:
+                                        if is_heart_rate_service(service.uuid):
+                                            for char in service.characteristics:
+                                                if is_heart_rate_characteristic(char.uuid):
+                                                    hr_char_uuid = char.uuid
+                                                    break
+                                            if hr_char_uuid:
                                                 break
-                                        if hr_char_uuid:
-                                            break
-                                
-                                # 停止通知
-                                if hr_char_uuid:
-                                    try:
-                                        # 使用当前事件循环停止通知
-                                        loop.run_until_complete(device_client.stop_notify(hr_char_uuid))
-                                        logger.info("已停止设备通知")
-                                        notify_enabled = False
-                                    except Exception as e:
-                                        logger.error(f"停止设备通知时出错: {str(e)}")
-                            except Exception as e:
-                                logger.error(f"获取心率特征UUID失败: {str(e)}")
-                    
-                    # 安全关闭事件循环
-                    try:
-                        if not loop.is_closed():
-                            # 确保所有任务都已完成
-                            pending = asyncio.all_tasks(loop) if hasattr(asyncio, 'all_tasks') else asyncio.Task.all_tasks(loop)
-                            for task in pending:
-                                task.cancel()
-                            # 运行直到所有任务都被取消
-                            if pending:
-                                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                            loop.close()
-                    except Exception as e:
-                        logger.error(f"关闭事件循环时出错: {str(e)}")
-                    
-                    # 设置一个标志，表示通知已停止，防止回调函数继续处理数据
-                    notify_enabled = False
+                                    
+                                    # 停止通知
+                                    if hr_char_uuid:
+                                        try:
+                                            # 使用当前事件循环停止通知
+                                            loop.run_until_complete(device_client.stop_notify(hr_char_uuid))
+                                            logger.info("已停止设备通知")
+                                            notify_enabled = False
+                                        except Exception as e:
+                                            logger.error(f"停止设备通知时出错: {str(e)}")
+                                except Exception as e:
+                                    logger.error(f"获取心率特征UUID失败: {str(e)}")
+                        
+                        # 安全关闭事件循环
+                        try:
+                            if not loop.is_closed():
+                                # 确保所有任务都已完成
+                                pending = asyncio.all_tasks(loop) if hasattr(asyncio, 'all_tasks') else asyncio.Task.all_tasks(loop)
+                                for task in pending:
+                                    task.cancel()
+                                # 运行直到所有任务都被取消
+                                if pending:
+                                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+                                loop.close()
+                        except Exception as e:
+                            logger.error(f"关闭事件循环时出错: {str(e)}")
+                        
+                        # 设置一个标志，表示通知已停止，防止回调函数继续处理数据
+                        notify_enabled = False
                     
                     # 处理采集到的数据
                     # 如果数据采集失败或不足，需要补充模拟数据
