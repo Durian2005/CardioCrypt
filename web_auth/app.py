@@ -2136,7 +2136,7 @@ def start_verification():
                     
                     # 处理采集到的数据
                     # 如果数据采集失败或不足，需要补充模拟数据
-                    if not data_collected or len(collected_data) < 60:
+                    if (not data_collected_successfully and not data_collected) or len(collected_data) < 60:
                         partial_data_count = len(collected_data)
                         logger.info(f"验证：设备数据不足（获取到{partial_data_count}个点，需要60个点），使用模拟数据补充")
                         
