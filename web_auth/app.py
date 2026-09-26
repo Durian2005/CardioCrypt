@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 
 """
-心电脉搏信号身份认证Web应用
-基于Flask的Web界面，提供用户注册和登录功能
+CardioCrypt — 心电/脉搏生物特征身份认证 Web 应用
+基于 Flask 的 Web 界面，提供用户注册与身份认证功能
 """
 
 # 设置系统可用性标志，控制模型训练和验证流程
@@ -193,7 +193,7 @@ def heart_rate_to_ppg(heart_rate, rr_interval=None):
     
     return ppg_signal + respiration + noise
 
-# 导入心电脉搏系统模块
+# 导入 CardioCrypt 核心信号处理模块
 try:
     from ecgppg_system.config import settings
     from ecgppg_system.config import config as dynamic_config
@@ -211,9 +211,9 @@ try:
     HEART_RATE_CHARACTERISTIC = settings.HEART_RATE_CHARACTERISTIC
     
     SYSTEM_AVAILABLE = True
-    logger.info("成功导入心电脉搏系统模块")
+    logger.info("成功导入 CardioCrypt 核心模块")
 except ImportError as e:
-    logger.error(f"导入心电脉搏系统模块失败: {e}")
+    logger.error(f"导入 CardioCrypt 核心模块失败: {e}")
     SYSTEM_AVAILABLE = False
     # 如果导入失败，设置默认值
     HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb"
@@ -221,8 +221,10 @@ except ImportError as e:
 
 # 创建Flask应用
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
-app.config["MONGO_URI"] = "mongodb://localhost:27017/ecg_auth_db"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.urandom(24)
+app.config["MONGO_URI"] = os.environ.get(
+    "MONGO_URI", "mongodb://localhost:27017/ecg_auth_db"
+)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
 # 向Jinja2模板环境注册now函数
@@ -250,8 +252,11 @@ ble_device_name = None  # 当前连接的设备名称
 ble_device_session_id = None  # 当前会话ID
 
 # 管理员相关常量
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD_HASH = generate_password_hash("admin123") # 初始密码，建议部署时修改
+# 生产部署请通过环境变量覆盖：ADMIN_USERNAME / ADMIN_PASSWORD
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD_HASH = generate_password_hash(
+    os.environ.get("ADMIN_PASSWORD", "admin123")
+)  # 默认口令仅供本地开发，部署前务必修改
 
 # 加载配置参数到本地变量中，方便使用
 def load_app_config():
@@ -2363,6 +2368,113 @@ def dashboard():
     
     return render_template('dashboard.html', username=session['username'])
 
+# 新增：获取实时健康数据API
+@app.route('/api/realtime_health_data')
+def get_realtime_health_data():
+    """获取实时健康数据"""
+    if 'username' not in session:
+        return jsonify({'error': '未登录'}), 401
+
+    username = session['username']
+
+    # 生成模拟实时数据
+    realtime_data = {
+        'heart_rate': generate_heart_rate(),
+        'ecg_signal': generate_ecg_signal(),
+        'ppg_signal': generate_ppg_signal(),
+        'emotion_status': get_emotion_status(),
+        'alert_level': get_alert_level(),
+        'timestamp': datetime.now().isoformat()
+    }
+
+    return jsonify(realtime_data)
+
+# 新增：获取健康趋势数据API
+@app.route('/api/health_trends')
+def get_health_trends():
+    """获取健康趋势数据"""
+    if 'username' not in session:
+        return jsonify({'error': '未登录'}), 401
+
+    # 生成模拟趋势数据
+    trends_data = {
+        'heart_rate_trend': generate_heart_rate_trend(),
+        'emotion_trend': generate_emotion_trend(),
+    }
+
+    return jsonify(trends_data)
+
+# 新增：模拟数据生成函数
+def get_simulated_health_data(username):
+    """生成模拟健康数据"""
+    return {
+        'current_heart_rate': 72,
+        'heart_rate_status': '正常',
+        'emotion_status': '平静',
+        'alert_level': '低风险',
+        'last_update': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'device_status': '已连接',
+        'today_summary': {
+            'avg_heart_rate': 75,
+            'max_heart_rate': 85,
+            'min_heart_rate': 65,
+            'abnormal_events': 2
+        }
+    }
+
+def generate_health_report(username):
+    """生成健康报告"""
+    return {
+        'period': '最近7天',
+        'summary': {
+            'avg_heart_rate': 74,
+            'abnormal_days': 1,
+            'risk_assessment': '低风险'
+        },
+        'daily_data': [
+            {'date': '2024-01-01', 'avg_hr': 72, 'status': '正常'},
+            {'date': '2024-01-02', 'avg_hr': 75, 'status': '正常'},
+            {'date': '2024-01-03', 'avg_hr': 85, 'status': '偏高'},
+            {'date': '2024-01-04', 'avg_hr': 70, 'status': '正常'},
+            {'date': '2024-01-05', 'avg_hr': 73, 'status': '正常'},
+            {'date': '2024-01-06', 'avg_hr': 76, 'status': '正常'},
+            {'date': '2024-01-07', 'avg_hr': 71, 'status': '正常'}
+        ]
+    }
+
+def generate_heart_rate():
+    """生成模拟心率数据"""
+    return 70 + random.randint(-5, 5)
+
+def generate_ecg_signal():
+    """生成模拟ECG信号"""
+    return [random.uniform(-0.5, 0.5) for _ in range(100)]
+
+def generate_ppg_signal():
+    """生成模拟PPG信号"""
+    return [random.uniform(0.1, 0.9) for _ in range(100)]
+
+
+def get_emotion_status():
+    """获取情绪状态"""
+    statuses = ['平静', '轻度紧张', '放松', '专注']
+    return random.choice(statuses)
+
+def get_alert_level():
+    """获取预警等级"""
+    levels = ['正常', '低风险', '中风险', '高风险']
+    return random.choice(levels)
+
+
+def generate_heart_rate_trend():
+    """生成心率趋势数据"""
+    return [70 + random.randint(-8, 8) for _ in range(24)]
+
+def generate_emotion_trend():
+    """生成情绪趋势数据"""
+    emotions = [1, 2, 1, 3, 2, 1, 2]  # 1:平静, 2:轻度紧张, 3:放松
+    return emotions
+
 # 路由: 退出登录
 @app.route('/logout')
 def logout():
@@ -2666,6 +2778,39 @@ def batch_delete_users():
         flash(f'批量删除失败: {str(e)}')
     
     return redirect(url_for('admin_dashboard'))
+
+# ===================================================================
+# SPA 适配层接入
+# -------------------------------------------------------------------
+# 说明：以下代码为「纯新增」，不修改任何既有路由与业务逻辑。
+#   1) 补充前端所需的 JSON 接口（会话、管理后台数据）；
+#   2) 托管前端构建产物 web_auth/static/dist；
+#   3) 提供 /app 前缀入口，便于与原有页面并行对比调试。
+# 环境变量 FRONTEND_MODE=spa 时，主要入口页由前端接管。
+# ===================================================================
+try:
+    from web_auth.spa_adapter import register_spa, make_frontend_switch
+except ImportError:
+    # 兼容以 `python web_auth/app.py` 直接运行时的模块搜索路径
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location(
+        'spa_adapter',
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'spa_adapter.py'),
+    )
+    _mod = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_mod)  # type: ignore
+    register_spa = _mod.register_spa
+    make_frontend_switch = _mod.make_frontend_switch
+
+FRONTEND_MODE = os.environ.get('FRONTEND_MODE', 'spa').lower()
+
+try:
+    app.config['SYSTEM_AVAILABLE'] = SYSTEM_AVAILABLE
+    register_spa(app, mongo, admin_required)
+    make_frontend_switch(app, FRONTEND_MODE if FRONTEND_MODE in ('spa', 'classic') else 'spa')
+    logger.info(f"前端模式: {app.config.get('FRONTEND_MODE')}")
+except Exception as _e:
+    logger.error(f"SPA 适配层注册失败: {_e}")
 
 # 启动应用
 if __name__ == '__main__':
