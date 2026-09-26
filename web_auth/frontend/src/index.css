@@ -1,0 +1,380 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   设计令牌 · 医疗科技 · 深色玻璃拟态
+   主色：青蓝（生命体征色）  强调色：高亮青绿
+   配色克制，渐变仅用于极少量点缀，不铺满版面
+   ============================================================ */
+
+@theme {
+  /* 字体 */
+  --font-sans: 'Inter', 'Noto Sans SC', system-ui, -apple-system, 'Segoe UI',
+    'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+  /* 圆角 */
+  --radius-xs: 0.375rem;
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
+
+  /* 品牌色阶 —— 青蓝（主色） */
+  --color-brand-50: #eef8ff;
+  --color-brand-100: #d9efff;
+  --color-brand-200: #bce3ff;
+  --color-brand-300: #8ed2ff;
+  --color-brand-400: #59b8ff;
+  --color-brand-500: #3399f5;
+  --color-brand-600: #1e79da;
+  --color-brand-700: #1a61b0;
+  --color-brand-800: #1b528f;
+  --color-brand-900: #1b4676;
+
+  /* 强调色 —— 青绿（CTA / 成功态） */
+  --color-accent-300: #6ee7d3;
+  --color-accent-400: #34d3b8;
+  --color-accent-500: #10b99e;
+  --color-accent-600: #0d9483;
+  --color-accent-700: #0f766e;
+
+  /* 语义色 */
+  --color-success: #10b99e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+
+  /* 语义表面（深色基底） */
+  --color-surface-0: #080b14;
+  --color-surface-1: #0d1220;
+  --color-surface-2: #131a2b;
+  --color-surface-3: #1a2338;
+}
+
+/* ---------- 主题变量（HSL，供 shadcn 风格组件消费） ---------- */
+:root {
+  --background: 222 47% 5%;
+  --foreground: 213 31% 94%;
+
+  --card: 222 40% 8%;
+  --card-foreground: 213 31% 94%;
+
+  --popover: 222 44% 7%;
+  --popover-foreground: 213 31% 94%;
+
+  --primary: 208 85% 58%;
+  --primary-foreground: 222 47% 6%;
+
+  --secondary: 220 28% 14%;
+  --secondary-foreground: 213 31% 94%;
+
+  --muted: 220 26% 13%;
+  --muted-foreground: 215 20% 62%;
+
+  --accent: 172 75% 42%;
+  --accent-foreground: 222 47% 6%;
+
+  --destructive: 0 72% 58%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 218 30% 20%;
+  --input: 218 30% 18%;
+  --ring: 208 85% 58%;
+
+  /* 玻璃拟态参数 */
+  --glass-bg: 222 40% 12%;
+  --glass-border: 213 40% 32%;
+  --glass-highlight: 213 60% 70%;
+
+  --radius: 0.75rem;
+}
+
+/* 浅色模式：保留可用性，但整体气质仍以深色为主 */
+.light {
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+
+  --primary: 208 78% 46%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 210 30% 94%;
+  --secondary-foreground: 222 47% 11%;
+
+  --muted: 210 30% 94%;
+  --muted-foreground: 215 20% 42%;
+
+  --accent: 172 75% 36%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 214 26% 88%;
+  --input: 214 26% 88%;
+  --ring: 208 78% 46%;
+
+  --glass-bg: 210 40% 100%;
+  --glass-border: 214 30% 82%;
+  --glass-highlight: 214 60% 60%;
+}
+
+/* ---------- 基础层 ---------- */
+@layer base {
+  * {
+    border-color: hsl(var(--border));
+  }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  /* 数字使用等宽字形，避免跳动 */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.28);
+    color: hsl(var(--foreground));
+  }
+
+  /* 滚动条 */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid hsl(var(--background));
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.6);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+/* ============================================================
+   质感层：噪点 / 网格 / 光斑 / 玻璃
+   ============================================================ */
+@layer utilities {
+  /* 细微噪点纹理（用 SVG feTurbulence，避免外链） */
+  .noise-overlay::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    opacity: 0.028;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+  .light .noise-overlay::after {
+    opacity: 0.018;
+  }
+
+  /* 网格背景 */
+  .grid-bg {
+    background-image: linear-gradient(
+        to right,
+        hsl(var(--border) / 0.42) 1px,
+        transparent 1px
+      ),
+      linear-gradient(to bottom, hsl(var(--border) / 0.42) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  /* 极光光斑：极少量点缀，不铺面 */
+  .aurora {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(120px);
+    pointer-events: none;
+    will-change: transform;
+  }
+
+  /* 玻璃拟态卡片 */
+  .glass {
+    background: hsl(var(--glass-bg) / 0.55);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid hsl(var(--glass-border) / 0.45);
+    box-shadow:
+      0 1px 0 0 hsl(var(--glass-highlight) / 0.07) inset,
+      0 8px 32px -8px rgb(0 0 0 / 0.5);
+  }
+  .light .glass {
+    background: hsl(var(--glass-bg) / 0.72);
+    box-shadow:
+      0 1px 0 0 hsl(0 0% 100% / 0.8) inset,
+      0 8px 32px -10px rgb(15 23 42 / 0.14);
+  }
+
+  /* 玻璃：更通透的变体（导航栏） */
+  .glass-bar {
+    background: hsl(var(--background) / 0.72);
+    backdrop-filter: blur(16px) saturate(150%);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    border-bottom: 1px solid hsl(var(--border) / 0.6);
+  }
+
+  /* 顶部高光描边：玻璃卡片的"边缘反光" */
+  .hairline-top {
+    position: relative;
+  }
+  .hairline-top::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 12%;
+    right: 12%;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--glass-highlight) / 0.45),
+      transparent
+    );
+    pointer-events: none;
+  }
+
+  /* 微交互：hover 抬升 */
+  .lift {
+    transition:
+      transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+      box-shadow 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+      border-color 0.28s ease;
+  }
+  .lift:hover {
+    transform: scale(1.02) translateY(-2px);
+    box-shadow:
+      0 20px 40px -12px rgb(0 0 0 / 0.55),
+      0 0 0 1px hsl(var(--glass-border) / 0.6);
+  }
+  .light .lift:hover {
+    box-shadow:
+      0 20px 40px -16px rgb(15 23 42 / 0.2),
+      0 0 0 1px hsl(var(--glass-border) / 0.9);
+  }
+
+  /* 文字：柔和渐变（仅用于大标题的关键词） */
+  .text-sheen {
+    background: linear-gradient(
+      100deg,
+      hsl(var(--foreground)) 20%,
+      hsl(var(--primary)) 55%,
+      hsl(var(--accent)) 85%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  /* 呼吸光晕：心电主题 */
+  .pulse-ring::before {
+    content: '';
+    position: absolute;
+    inset: -35%;
+    border-radius: 9999px;
+    background: radial-gradient(
+      circle,
+      hsl(var(--primary) / 0.22),
+      transparent 68%
+    );
+    animation: breathe 3.4s ease-in-out infinite;
+  }
+
+  @keyframes breathe {
+    0%,
+    100% {
+      transform: scale(0.94);
+      opacity: 0.55;
+    }
+    50% {
+      transform: scale(1.06);
+      opacity: 1;
+    }
+  }
+
+  /* 骨架屏扫光 */
+  .shimmer {
+    position: relative;
+    overflow: hidden;
+  }
+  .shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(
+      90deg,
+      transparent,
+      hsl(var(--foreground) / 0.07),
+      transparent
+    );
+    animation: shimmer 1.6s infinite;
+  }
+  @keyframes shimmer {
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  /* 心电波形扫线 */
+  @keyframes sweep {
+    0% {
+      stroke-dashoffset: 1000;
+    }
+    100% {
+      stroke-dashoffset: 0;
+    }
+  }
+  .sweep-line {
+    stroke-dasharray: 1000;
+    animation: sweep 3.2s linear infinite;
+  }
+
+  /* 数值跳动的强调 */
+  @keyframes tick-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .tick-up {
+    animation: tick-up 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+}
