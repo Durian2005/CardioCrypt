@@ -2772,6 +2772,26 @@ except Exception as _e:
 if __name__ == '__main__':
     # 初始化系统
     init_system()
-    
+
+    # 这里只用于本地开发。生产环境请改用 WSGI 服务器，例如：
+    #   gunicorn -w 1 --threads 8 -b 127.0.0.1:5000 web_auth.app:app
+    #
+    # 调试模式默认关闭：一旦开启，Werkzeug 会暴露可执行任意代码的交互式调试器，
+    # 并显示完整堆栈与配置。仅在完全可信的本机环境下临时用 FLASK_DEBUG=1 打开。
+    _debug = os.environ.get('FLASK_DEBUG', '0').strip().lower() in ('1', 'true', 'yes', 'on')
+    _host = os.environ.get('FLASK_HOST', '127.0.0.1').strip() or '127.0.0.1'
+    try:
+        _port = int(os.environ.get('FLASK_PORT', '5000'))
+    except ValueError:
+        logger.warning("FLASK_PORT 不是合法端口号，回退到 5000")
+        _port = 5000
+
+    if _debug and _host not in ('127.0.0.1', 'localhost'):
+        logger.warning(
+            "调试模式已开启且监听地址为 %s —— 调试器可能被局域网内其他主机访问，"
+            "请勿在不可信网络中使用", _host
+        )
+
     # 启动Flask应用，禁用自动重载器以避免重复日志
-    app.run(debug=True, host='0.0.0.0', port=5000, use_reloader=False) 
+    logger.info("开发服务器启动: http://%s:%s (debug=%s)", _host, _port, _debug)
+    app.run(debug=_debug, host=_host, port=_port, use_reloader=False)
