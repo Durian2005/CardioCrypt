@@ -7,14 +7,14 @@
             margin: 0;
             box-sizing: border-box;
         }
-        
+
         /* 仪表盘全宽模式下的响应式调整 */
         @media (max-width: 1200px) {
             .dashboard-container-fluid {
                 padding: 15px;
             }
         }
-        
+
         @media (max-width: 768px) {
             .dashboard-container-fluid {
                 padding: 10px;
@@ -75,7 +75,7 @@
     left: 0;
     width: 100%;
     height: 100%;
-    background-image: 
+    background-image:
         linear-gradient(rgba(0, 255, 0, 0.1) 1px, transparent 1px),
         linear-gradient(90deg, rgba(0, 255, 0, 0.1) 1px, transparent 1px);
     background-size: 20px 20px;
@@ -225,22 +225,157 @@
 /* 数据卡片样式 */
 .data-card {
     text-align: center;
-    padding: 15px;
+    padding: 20px;
     border-radius: 10px;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+    background: rgba(0, 255, 255, 0.1);
+    border: 1px solid rgba(0, 255, 255, 0.3);
+    color: #00ffff;
     margin-bottom: 15px;
+    box-shadow:
+        0 0 20px rgba(0, 255, 255, 0.2),
+        inset 0 0 20px rgba(0, 255, 255, 0.1);
+    transition: all 0.3s ease;
+}
+
+.data-card:hover {
+    border-color: rgba(0, 255, 255, 0.6);
+    box-shadow:
+        0 0 30px rgba(0, 255, 255, 0.4),
+        inset 0 0 30px rgba(0, 255, 255, 0.2);
 }
 
 .data-card .value {
-    font-size: 2rem;
+    font-size: 2.5rem;
     font-weight: bold;
     margin-bottom: 5px;
+    background: linear-gradient(45deg, #00ffff, #00ff88);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
 }
 
 .data-card .label {
     font-size: 0.9rem;
-    opacity: 0.9;
+    opacity: 0.8;
+    color: rgba(255, 255, 255, 0.7);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* 表格样式 - 大屏风格 */
+.table {
+    color: rgba(255, 255, 255, 0.9);
+    border-collapse: separate;
+    border-spacing: 0 8px;
+}
+
+.table thead th {
+    background: rgba(0, 255, 255, 0.1);
+    color: #00ffff;
+    border: none;
+    padding: 15px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-weight: 600;
+    text-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+.table tbody tr {
+    background: rgba(0, 255, 255, 0.05);
+    transition: all 0.3s ease;
+}
+
+.table tbody tr:hover {
+    background: rgba(0, 255, 255, 0.15);
+    box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+    transform: translateY(-2px);
+}
+
+.table tbody td {
+    border: none;
+    padding: 15px;
+    vertical-align: middle;
+    border-top: 1px solid rgba(0, 255, 255, 0.1);
+}
+
+.table-responsive {
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+    padding: 10px;
+}
+
+/* 按钮样式优化 */
+.btn-outline-primary,
+.btn-outline-secondary {
+    border: 2px solid #00ffff;
+    color: #00ffff;
+    background: transparent;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.3s ease;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.2);
+}
+
+.btn-outline-primary:hover,
+.btn-outline-secondary:hover {
+    background: rgba(0, 255, 255, 0.2);
+    border-color: #00ffff;
+    color: #00ffff;
+    box-shadow: 0 0 20px rgba(0, 255, 255, 0.4);
+    transform: translateY(-2px);
+}
+
+.btn-sm {
+    padding: 6px 16px;
+    font-size: 0.85rem;
+}
+
+/* 数据流动效果 */
+@keyframes dataFlow {
+    0% {
+        background-position: 0% 50%;
+    }
+    50% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0% 50%;
+    }
+}
+.chart-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #00ffff, transparent);
+    animation: dataFlow 3s linear infinite;
+    pointer-events: none;
+    z-index: 0;
+}
+
+/* 滚动条样式 - 大屏风格 */
+.table-responsive::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.table-responsive::-webkit-scrollbar-track {
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 10px;
+}
+
+.table-responsive::-webkit-scrollbar-thumb {
+    background: linear-gradient(45deg, #00ffff, #00ff88);
+    border-radius: 10px;
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.5);
+}
+
+.table-responsive::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(45deg, #00ff88, #00ffff);
 }
 
 /* 响应式设计 */
@@ -248,41 +383,138 @@
     .dashboard-container {
         padding: 10px;
     }
-    
+
     .dashboard-card {
         padding: 15px;
     }
-    
+
     .gauge-container {
         width: 100px;
         height: 100px;
     }
-    
+
     .gauge::before {
         width: 65px;
         height: 65px;
     }
-    
+
     .data-card .value {
         font-size: 1.5rem;
     }
 }
 
-/* 动画效果 */
-.fade-in {
-    animation: fadeIn 0.5s ease-in;
+/* 高风险预警弹窗样式 */
+#highRiskAlertModal .modal-content {
+    animation: shake 0.5s ease-in-out;
 }
 
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+#highRiskAlertModal .alert-icon i {
+    animation: pulse-danger 1.5s infinite;
 }
 
-.slide-in {
-    animation: slideIn 0.5s ease-out;
+/* 紧急按钮样式 - 大屏风格 */
+.emergency-btn {
+    background: linear-gradient(135deg, #ff0080 0%, #ff4d94 100%);
+    border: 2px solid #ff0080;
+    box-shadow:
+        0 0 20px rgba(255, 0, 128, 0.6),
+        0 0 40px rgba(255, 0, 128, 0.4),
+        inset 0 0 20px rgba(255, 0, 128, 0.2);
+    color: #fff;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: all 0.3s ease;
+    animation: pulse-emergency 2s infinite;
+    position: relative;
+    overflow: hidden;
+    z-index: 1000;
+}
+.emergency-btn::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: width 0.6s, height 0.6s;
 }
 
-@keyframes slideIn {
-    from { transform: translateX(-20px); opacity: 0; }
-    to { transform: translateX(0); opacity: 1; }
-} 
+.emergency-btn:hover::before {
+    width: 300px;
+    height: 300px;
+}
+.emergency-btn:hover {
+    transform: translateY(-3px) scale(1.05);
+    box-shadow:
+        0 0 30px rgba(255, 0, 128, 0.8),
+        0 0 60px rgba(255, 0, 128, 0.6),
+        inset 0 0 30px rgba(255, 0, 128, 0.3);
+    border-color: #fff;
+}
+
+@keyframes pulse-emergency {
+    0%, 100% {
+        box-shadow:
+            0 0 20px rgba(255, 0, 128, 0.6),
+            0 0 40px rgba(255, 0, 128, 0.4);
+    }
+    50% {
+        box-shadow:
+            0 0 30px rgba(255, 0, 128, 0.8),
+            0 0 60px rgba(255, 0, 128, 0.6);
+    }
+}
+
+/* 数据数字样式 - 大屏风格 */
+.health-card h2 {
+    font-size: 3rem;
+    font-weight: bold;
+    background: linear-gradient(45deg, #00ffff, #00ff88);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes glow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.8; }
+}
+
+/* 图标发光效果 */
+.health-card i {
+    filter: drop-shadow(0 0 10px currentColor);
+}
+
+.fa-heartbeat {
+    color: #ff0080;
+    animation: heartbeat 1.5s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+    0%, 100% { transform: scale(1); }
+    10%, 30% { transform: scale(1.1); }
+    20%, 40% { transform: scale(1); }
+}
+
+.fa-smile {
+    color: #ffd700;
+}
+
+.fa-exclamation-triangle {
+    color: #ff9500;
+}
+.fa-watch {
+    color: #00d4ff;
+}
+
+.fa-wave-square,
+.fa-chart-line,
+.fa-brain,
+.fa-history {
+    color: #00ffff;
+}

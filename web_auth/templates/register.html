@@ -1,36 +1,24 @@
 {% extends "base.html" %}
 
-{% block title %}注册 - 心电脉搏信号身份认证系统{% endblock %}
+{% block title %}注册 - CardioCrypt{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="row justify-content-center">
-    <div class="col-md-6">
-        <div class="card shadow-lg border-0 rounded-lg mt-5">
-            <div class="card-header bg-primary text-white">
-                <h3 class="text-center font-weight-light my-4">
-                    <i class="fas fa-user-plus me-2"></i>用户注册
-                </h3>
-            </div>
+<div class="register-page-container">
+    <div class="register-card-wrapper">
+        <div class="card shadow-lg border-0 rounded-lg">
+           
             <div class="card-body">
                 <div class="text-center mb-4">
-                    <div class="register-icon mb-3">
-                        <i class="fas fa-user-plus fa-3x text-success"></i>
+                    <div class="login-icon mb-3">
+                        <i class="fas fa-heartbeat fa-3x text-primary"></i>
                     </div>
-                    <p class="lead">
-                        请输入您想要注册的用户名，然后连接心电设备进行身份特征采集
+                    <p class="lead fw-bold" style="font-size: 2rem;">
+                        用户注册
                     </p>
-                    <div class="register-features">
-                        <span class="badge bg-light text-dark me-2">
-                            <i class="fas fa-database me-1"></i>数据采集
-                        </span>
-                        <span class="badge bg-light text-dark me-2">
-                            <i class="fas fa-cog me-1"></i>特征提取
-                        </span>
-                        <span class="badge bg-light text-dark">
-                            <i class="fas fa-save me-1"></i>模型训练
-                        </span>
-                    </div>
+                    <p class="lead">
+                        智能心脏健康监护系统
+                    </p>
+                
                 </div>
                 <form method="post" action="{{ url_for('register') }}">
                     <div class="mb-3">
@@ -52,11 +40,78 @@
             </div>
             <div class="card-footer text-center py-3">
                 <div class="small">
-                    已有账号？<a href="{{ url_for('login') }}">立即认证</a>
+                    已有账号？<a href="{{ url_for('login') }}">登录</a>
                 </div>
             </div>
         </div>
     </div>
 </div>
-</div>
+
+<style>
+    /* 设置body和html高度 */
+    html, body {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        background: url("{{ url_for('static', filename='images/background.jpg') }}") no-repeat center center fixed;
+        background-size: cover;
+    }
+    
+    /* 隐藏导航栏容器的背景 */
+    body {
+        background-color: transparent !important;
+    }
+    
+    /* 隐藏主容器背景 */
+    .container-fluid {
+        background: none !important;
+        min-height: calc(100vh - 60px);
+        padding: 0 !important;
+    }
+    
+    .container-fluid .row {
+        margin: 0 !important;
+    }
+    
+    .main-content {
+        padding: 0 !important;
+        background: transparent !important;
+    }
+    
+    .register-page-container {
+        min-height: calc(100vh - 60px);
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        padding-right: 10%;
+        position: relative;
+    }
+    
+    .register-card-wrapper {
+        width: 450px;
+        max-width: 90%;
+    }
+    
+    .register-page-container .card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+    }
+    
+    /* 页脚样式调整 */
+    footer.footer {
+        position: relative;
+        margin-top: 0;
+        background: rgba(0, 0, 0, 0.5) !important;
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+    }
+    
+    @media (max-width: 768px) {
+        .register-page-container {
+            justify-content: center;
+            padding-right: 0;
+        }
+    }
+</style>
 {% endblock %} 

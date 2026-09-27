@@ -1,5 +1,5 @@
 /**
- * 心电脉搏信号身份认证系统 - 主JavaScript文件
+ * CardioCrypt — 主 JavaScript 文件
  */
 
 // 页面加载完成后执行

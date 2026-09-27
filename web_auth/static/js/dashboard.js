@@ -1,302 +1,216 @@
-// 仪表盘JavaScript功能
-class DashboardManager {
-    constructor() {
-        this.ecgChart = null;
-        this.init();
-    }
+// 实时数据更新
+let realtimeChart, heartrateChart, emotionChart;
 
-    init() {
-        this.initECGChart();
-        this.initGauges();
-        this.initTimeline();
-        this.startRealTimeUpdates();
-        this.initSystemMetrics();
-    }
-
-    // 初始化ECG实时波形图
-    initECGChart() {
-        const ctx = document.getElementById('ecgChart');
-        if (!ctx) return;
-
-        // 生成模拟ECG数据
-        const generateECGData = () => {
-            const data = [];
-            const timePoints = 100;
-            for (let i = 0; i < timePoints; i++) {
-                const t = i / timePoints * 4 * Math.PI;
-                // 模拟ECG波形：P波、QRS复合波、T波
-                let value = 0;
-                
-                // P波
-                if (t >= 0 && t < 0.5) {
-                    value = 0.3 * Math.sin(t * 4);
-                }
-                // QRS复合波
-                else if (t >= 0.5 && t < 1.5) {
-                    value = 2.0 * Math.sin((t - 0.5) * 8) - 0.5 * Math.sin((t - 0.5) * 16);
-                }
-                // T波
-                else if (t >= 1.5 && t < 2.5) {
-                    value = 0.8 * Math.sin((t - 1.5) * 2);
-                }
-                // 基线
-                else {
-                    value = 0.1 * Math.sin(t * 0.5);
-                }
-                
-                data.push({
-                    x: i,
-                    y: value + Math.random() * 0.1
-                });
-            }
-            return data;
-        };
-
-        this.ecgChart = new Chart(ctx, {
-            type: 'line',
-            data: {
-                datasets: [{
+function initCharts() {
+    // Chart.js 全局配置 - 大屏风格
+    Chart.defaults.color = '#00ffff';
+    Chart.defaults.borderColor = 'rgba(0, 255, 255, 0.2)';
+    // 初始化实时波形图
+    const realtimeCtx = document.getElementById('realtime-chart').getContext('2d');
+    realtimeChart = new Chart(realtimeCtx, {
+        type: 'line',
+        data: {
+            labels: Array.from({length: 100}, (_, i) => i),
+            datasets: [
+                {
                     label: 'ECG信号',
-                    data: generateECGData(),
-                    borderColor: '#00ff00',
-                    backgroundColor: 'rgba(0, 255, 0, 0.1)',
-                    borderWidth: 2,
-                    fill: false,
-                    tension: 0.1,
-                    pointRadius: 0
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: {
-                    duration: 0
+                    borderColor: '#ff0080',
+                        backgroundColor: 'rgba(255, 0, 128, 0.1)',
+                        data: Array(100).fill(0),
+                        borderWidth: 2,
+                        tension: 0.4,
+                        pointRadius: 0,
+                        pointHoverRadius: 5,
+                        shadowColor: '#ff0080',
+                        shadowBlur: 10
                 },
-                scales: {
-                    x: {
-                        display: false,
-                        grid: {
-                            display: false
+                {
+                    label: 'PPG信号',
+                    borderColor: '#00ffff',
+                    backgroundColor: 'rgba(0, 255, 255, 0.1)',
+                    data: Array(100).fill(0),
+                    borderWidth: 2,
+                    tension: 0.4,
+                    pointRadius: 0,
+                    pointHoverRadius: 5
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            animation: false,
+        plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            color: '#00ffff',
+                            font: {
+                                size: 12,
+                                weight: '600'
+                            },
+                            usePointStyle: true,
+                            padding: 15
                         }
                     },
+        tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleColor: '#00ffff',
+                        bodyColor: '#fff',
+                        borderColor: '#00ffff',
+                        borderWidth: 1,
+                        padding: 10,
+                        displayColors: true
+                    }
+                },
+        scales: {
                     y: {
-                        display: false,
+                        beginAtZero: true,
                         grid: {
-                            display: false
+                            color: 'rgba(0, 255, 255, 0.1)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#00ffff',
+                            font: {
+                                size: 11
+                            }
                         }
-                    }
-                },
-                plugins: {
-                    legend: {
-                        display: false
-                    }
-                },
-                elements: {
-                    point: {
-                        radius: 0
+                    },
+        x: {
+                        grid: {
+                            color: 'rgba(0, 255, 255, 0.05)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            color: '#00ffff',
+                            font: {
+                                size: 11
+                            },
+                            maxTicksLimit: 10
+                        }
                     }
                 }
             }
         });
 
-        // 实时更新ECG数据
-        setInterval(() => {
-            if (this.ecgChart) {
-                const newData = generateECGData();
-                this.ecgChart.data.datasets[0].data = newData;
-                this.ecgChart.update('none');
-            }
-        }, 1000);
-    }
-
-
-
-
-
-    // 初始化仪表盘
-    initGauges() {
-        this.updateGauge('successRate', 96.5);
-        this.updateGauge('accuracyRate', 98.2);
-        this.updateGauge('responseTime', 85);
-    }
-
-    // 更新仪表盘
-    updateGauge(elementId, value) {
-        const element = document.getElementById(elementId);
-        if (!element) return;
-
-        const percentage = (value / 100) * 360;
-        const gauge = element.querySelector('.gauge');
-        if (gauge) {
-            gauge.style.background = `conic-gradient(from 0deg, #28a745 0deg, #28a745 ${percentage}deg, #e9ecef ${percentage}deg)`;
-        }
-
-        const valueElement = element.querySelector('.gauge-value');
-        if (valueElement) {
-            valueElement.textContent = value + (elementId === 'responseTime' ? 'ms' : '%');
-        }
-    }
-
-    // 初始化时间线
-    initTimeline() {
-        const timeline = document.getElementById('securityTimeline');
-        if (!timeline) return;
-
-        // 基于当前时间生成事件（2分半内）
-        const now = new Date();
-        const events = [
-            { 
-                time: new Date(now.getTime() - 15 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
-                event: '用户认证成功', 
-                status: 'success' 
-            },
-            { 
-                time: new Date(now.getTime() - 45 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
-                event: 'ECG信号采集完成', 
-                status: 'success' 
-            },
-            { 
-                time: new Date(now.getTime() - 75 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
-                event: '设备连接建立', 
-                status: 'success' 
-            },
-            { 
-                time: new Date(now.getTime() - 105 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
-                event: '系统自检完成', 
-                status: 'success' 
-            },
-            { 
-                time: new Date(now.getTime() - 135 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
-                event: '用户登录尝试', 
-                status: 'warning' 
-            },
-            { 
-                time: new Date(now.getTime() - 150 * 1000).toLocaleTimeString('zh-CN', {hour12: false}), 
-                event: '系统启动完成', 
-                status: 'success' 
-            }
-        ];
-
-        timeline.innerHTML = events.map(event => `
-            <div class="timeline-item ${event.status}">
-                <div class="d-flex justify-content-between">
-                    <strong>${event.event}</strong>
-                    <small class="text-muted">${event.time}</small>
-                </div>
-            </div>
-        `).join('');
-    }
-
-    // 初始化系统指标
-    initSystemMetrics() {
-        this.updateSystemMetrics();
-        setInterval(() => this.updateSystemMetrics(), 3000);
-    }
-
-    // 更新系统指标
-    updateSystemMetrics() {
-        // 模拟系统指标数据
-        const metrics = {
-            cpu: Math.floor(Math.random() * 20) + 15,
-            memory: Math.floor(Math.random() * 15) + 25,
-            disk: Math.floor(Math.random() * 10) + 30,
-            network: Math.floor(Math.random() * 5) + 2
-        };
-
-        // 更新进度条
-        Object.keys(metrics).forEach(key => {
-            const element = document.getElementById(`${key}Progress`);
-            if (element) {
-                element.style.width = metrics[key] + '%';
-                element.textContent = metrics[key] + '%';
-            }
-        });
-
-        // 更新设备状态
-        this.updateDeviceStatus();
-    }
-
-    // 更新设备状态
-    updateDeviceStatus() {
-        const deviceStatus = document.getElementById('deviceStatus');
-        if (deviceStatus) {
-            const isConnected = Math.random() > 0.1; // 90%连接率
-            deviceStatus.innerHTML = `
-                <span class="status-indicator ${isConnected ? 'status-online' : 'status-offline'}"></span>
-                ${isConnected ? '设备已连接' : '设备离线'}
-            `;
-        }
-
-        // 更新信号强度
-        const signalStrength = document.getElementById('signalStrength');
-        if (signalStrength) {
-            const strength = Math.floor(Math.random() * 20) + 80;
-            signalStrength.textContent = strength + ' dBm';
-        }
-    }
-
-    // 开始实时更新
-    startRealTimeUpdates() {
-        // 更新当前时间
-        setInterval(() => {
-            const timeElement = document.getElementById('currentTime');
-            if (timeElement) {
-                timeElement.textContent = new Date().toLocaleTimeString('zh-CN');
-            }
-        }, 1000);
-
-        // 更新心率数据
-        setInterval(() => {
-            const heartRateElement = document.getElementById('heartRate');
-            if (heartRateElement) {
-                const heartRate = Math.floor(Math.random() * 20) + 65;
-                heartRateElement.textContent = heartRate + ' BPM';
-            }
-        }, 2000);
-    }
+    // 其他图表初始化...
 }
 
-// 页面加载完成后初始化仪表盘
-document.addEventListener('DOMContentLoaded', function() {
-    // 加载Chart.js
-    if (typeof Chart === 'undefined') {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/chart.js';
-        script.onload = () => {
-            new DashboardManager();
-        };
-        document.head.appendChild(script);
-    } else {
-        new DashboardManager();
+// 更新实时数据
+let lastAlertLevel = ''; // 记录上一次的预警等级，避免重复弹窗
+function updateRealtimeData() {
+    fetch('/api/realtime_health_data')
+        .then(response => response.json())
+        .then(data => {
+            // 更新界面数据
+            document.getElementById('current-heartrate').textContent = data.heartrate;
+            document.getElementById('emotion-status').textContent = data.emotion;
+            document.getElementById('alert-level').textContent = data.alertLevel;
+            document.getElementById('last-update').textContent = '更新于: ' + new Date().toLocaleTimeString();
+            // 检查预警等级，如果是高风险则弹出警告
+            checkAlertLevel(data.alert_level);
+            // 更新实时图表数据
+                updateChartData(realtimeChart, data.ecg_signal, data.ppg_signal);
+        });
+
+}
+
+// 检查预警等级并触发弹窗
+    function checkAlertLevel(alertLevel) {
+        // 更新预警卡片的样式
+        updateAlertCardStyle(alertLevel);
+
+        // 检测是否为高风险，并且与上次状态不同（避免重复弹窗）
+        if ((alertLevel === '高风险' || alertLevel === '高') && lastAlertLevel !== '高风险') {
+            showHighRiskAlert();
+            lastAlertLevel = '高风险';
+
+            // 播放警告音（如果浏览器支持）
+            try {
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBzKJ0fPTgjMGHm7A7+OZRQ0PVKvo7qxbGAg+ldjwzXgpBSF1x+/hlEILD1iy6OyrWhgIPpTY8Mx3KAUhdsfw4ZRCCw9YsujsrFoYCD6U2PDMdygFIXbH8OGUQ==');
+                audio.play().catch(e => console.log('无法播放警告音'));
+            } catch(e) {
+                console.log('浏览器不支持音频播放');
+            }
+        } else if (alertLevel !== '高风险' && alertLevel !== '高') {
+            lastAlertLevel = alertLevel;
+        }
+    }
+  // 更新预警卡片样式
+    function updateAlertCardStyle(alertLevel) {
+        const alertLevelElement = document.getElementById('alert-level');
+        const alertCard = alertLevelElement.closest('.card');
+        const badgeElement = alertCard.querySelector('.badge');
+        const iconElement = alertCard.querySelector('.fa-exclamation-triangle');
+
+        // 移除所有可能的旧样式
+        badgeElement.className = 'badge';
+        iconElement.className = 'fas fa-exclamation-triangle fa-2x mb-3';
+         // 根据预警等级设置不同的样式
+        if (alertLevel === '高风险' || alertLevel === '高') {
+            badgeElement.classList.add('bg-danger');
+            badgeElement.textContent = '高风险';
+            iconElement.classList.add('text-danger');
+            alertCard.style.borderLeft = '5px solid #dc3545';
+            alertCard.style.animation = 'shake 0.5s ease-in-out';
+        } else if (alertLevel === '中风险' || alertLevel === '中') {
+            badgeElement.classList.add('bg-warning');
+            badgeElement.textContent = '中风险';
+            iconElement.classList.add('text-warning');
+            alertCard.style.borderLeft = '5px solid #ffc107';
+            alertCard.style.animation = 'none';
+        } else {
+            badgeElement.classList.add('bg-success');
+            badgeElement.textContent = '低风险';
+            iconElement.classList.add('text-warning');
+            alertCard.style.borderLeft = 'none';
+            alertCard.style.animation = 'none';
+        }
+    }
+    // 显示高风险预警弹窗
+    function showHighRiskAlert() {
+        const modal = new bootstrap.Modal(document.getElementById('highRiskAlertModal'));
+        document.getElementById('alertTime').textContent = '预警时间: ' + new Date().toLocaleString();
+        modal.show();
+    // 可选：发送通知（需要用户授权）
+        if ('Notification' in window && Notification.permission === 'granted') {
+            new Notification('健康监护预警', {
+                body: '检测到高风险状态，请立即查看！',
+                icon: '/static/images/warning-icon.png',
+                badge: '/static/images/badge-icon.png',
+                requireInteraction: true
+            });
+        }
     }
 
-    // 添加页面动画效果
-    const cards = document.querySelectorAll('.dashboard-card');
-    cards.forEach((card, index) => {
-        card.style.animationDelay = (index * 0.1) + 's';
-        card.classList.add('fade-in');
-    });
-});
+    // 更新图表数据
+    function updateChartData(chart, ecgData, ppgData) {
+        if (ecgData && chart.data.datasets[0]) {
+            chart.data.datasets[0].data = ecgData;
+        }
+        if (ppgData && chart.data.datasets[1]) {
+            chart.data.datasets[1].data = ppgData;
+        }
+        chart.update('none');
+    }
 
-// 模拟数据生成函数
-function generateMockData() {
-    return {
-        userStats: {
-            totalLogins: 156,
-            successfulAuths: 148,
-            failedAuths: 8,
-            avgResponseTime: 112
-        },
-        systemStats: {
-            uptime: '7天 14小时 32分钟',
-            activeUsers: 3,
-            totalDevices: 2,
-            dataIntegrity: 99.8
-        },
-        securityEvents: [
-            { time: '14:32:15', type: '认证成功', user: 'user123', ip: '192.168.1.100' },
-            { time: '14:30:42', type: '设备连接', user: 'user456', ip: '192.168.1.101' },
-            { time: '14:29:18', type: '系统自检', user: 'system', ip: 'localhost' }
-        ]
-    };
-} 
+    // 请求通知权限
+    function requestNotificationPermission() {
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission().then(permission => {
+                if (permission === 'granted') {
+                    console.log('通知权限已授予');
+                }
+            });
+        }
+    }
+
+// 页面加载完成后初始化
+document.addEventListener('DOMContentLoaded', function() {
+    initCharts();
+    updateRealtimeData();
+    requestNotificationPermission(); // 请求通知权限
+    setInterval(updateRealtimeData, 3000); // 每3秒更新一次数据
+});

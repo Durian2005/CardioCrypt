@@ -1,80 +1,206 @@
 {% extends "base.html" %}
 
-{% block title %}首页 - 心电脉搏信号身份认证系统{% endblock %}
+{% block title %}首页 - CardioCrypt{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
-    <div class="row justify-content-center">
-    <div class="col-md-8 text-center">
-        <div class="card shadow-lg border-0 rounded-lg mt-5">
-            <div class="card-header bg-primary text-white">
-                <h3 class="text-center font-weight-light my-4">
-                    <i class="fas fa-heartbeat me-2"></i>心电脉搏信号身份认证系统
-                </h3>
+<div class="container my-4">
+    <!-- 轮播图 -->
+    <div class="card shadow-sm mb-4 border-0 rounded-lg overflow-hidden">
+        <div id="carouselMain" class="carousel slide" data-bs-ride="carousel">
+            <div class="carousel-indicators">
+                <button type="button" data-bs-target="#carouselMain" data-bs-slide-to="0" class="active" aria-current="true"></button>
+                <button type="button" data-bs-target="#carouselMain" data-bs-slide-to="1"></button>
+                <button type="button" data-bs-target="#carouselMain" data-bs-slide-to="2"></button>
             </div>
-            <div class="card-body">
-                <div class="welcome-content my-5">
-                    <h2 class="mb-4">欢迎使用心电脉搏信号身份认证系统</h2>
-                    <p class="lead mb-4">
-                        本系统使用心电图(ECG)和脉搏波(PPG)信号作为生物特征，提供安全可靠的身份认证解决方案。
-                        每个人的心电脉搏信号都是独一无二的，就像指纹一样，可以用于身份验证。
-                    </p>
-                    <div class="features row mt-5">
-                        <div class="col-md-4 mb-3">
-                            <div class="feature-card">
-                                <div class="feature-icon mb-3">
-                                    <i class="fas fa-shield-alt fa-3x"></i>
-                                </div>
-                                <h4>安全可靠</h4>
-                                <p>基于生物特征的认证方式，难以伪造，提供高安全性</p>
-                                <div class="feature-badge">
-                                    <span class="badge bg-success">99.9%准确率</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="feature-card">
-                                <div class="feature-icon mb-3">
-                                    <i class="fas fa-bolt fa-3x"></i>
-                                </div>
-                                <h4>快速响应</h4>
-                                <p>验证过程快速，只需几秒钟即可完成身份确认</p>
-                                <div class="feature-badge">
-                                    <span class="badge bg-info">3秒内完成</span>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-4 mb-3">
-                            <div class="feature-card">
-                                <div class="feature-icon mb-3">
-                                    <i class="fas fa-user-check fa-3x"></i>
-                                </div>
-                                <h4>便捷使用</h4>
-                                <p>无需记忆复杂密码，只需连接设备即可完成认证</p>
-                                <div class="feature-badge">
-                                    <span class="badge bg-primary">一键认证</span>
-                                </div>
-                            </div>
+            <div class="carousel-inner">
+                <div class="carousel-item active">
+                    <img src="{{ url_for('static', filename='images/轮播图1.jpg') }}" class="d-block w-100" alt="轮播图1">
+                </div>
+                <div class="carousel-item">
+                    <img src="{{ url_for('static', filename='images/轮播图2.jpg') }}" class="d-block w-100" alt="轮播图2">
+                </div>
+                <div class="carousel-item">
+                    <img src="{{ url_for('static', filename='images/轮播图3.jpg') }}" class="d-block w-100" alt="轮播图3">
+                </div>
+            </div>
+            <button class="carousel-control-prev" type="button" data-bs-target="#carouselMain" data-bs-slide="prev">
+                <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">上一张</span>
+            </button>
+            <button class="carousel-control-next" type="button" data-bs-target="#carouselMain" data-bs-slide="next">
+                <span class="carousel-control-next-icon" aria-hidden="true"></span>
+                <span class="visually-hidden">下一张</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- 特性展示区 -->
+    <div class="row mb-4">
+        <div class="col-md-4 mb-4 mb-md-0">
+            <div class="card shadow-sm border-0 rounded-lg h-100">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon-large mb-3">
+                        <i class="fas fa-shield-alt fa-4x text-success"></i>
+                    </div>
+                    <h4 class="fw-bold">安全可靠</h4>
+                    <p class="text-muted">基于生物特征的认证方式，<br>难以伪造，提供高安全性</p>
+                    <div class="mt-3">
+                        <span class="badge bg-success rounded-pill px-4 py-2">99.9%准确率</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4 mb-4 mb-md-0">
+            <div class="card shadow-sm border-0 rounded-lg h-100">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon-large mb-3">
+                        <i class="fas fa-bolt fa-4x text-info"></i>
+                    </div>
+                    <h4 class="fw-bold">快速响应</h4>
+                    <p class="text-muted">验证过程快速，只需几秒钟<br>即可完成身份确认</p>
+                    <div class="mt-3">
+                        <span class="badge bg-info rounded-pill px-4 py-2">3秒内完成</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card shadow-sm border-0 rounded-lg h-100">
+                <div class="card-body text-center p-4">
+                    <div class="feature-icon-large mb-3">
+                        <i class="fas fa-user-check fa-4x text-primary"></i>
+                    </div>
+                    <h4 class="fw-bold">便捷使用</h4>
+                    <p class="text-muted">无需记忆复杂密码，只需连接<br>设备即可完成认证</p>
+                    <div class="mt-3">
+                        <span class="badge bg-primary rounded-pill px-4 py-2">一键认证</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 系统介绍区 -->
+    <div class="card shadow-sm mb-4 border-0 rounded-lg">
+        <div class="card-body p-4">
+            <h2 class="fw-bold mb-4 text-center">智能心脏健康监护系统</h2>
+            <div class="row align-items-center">
+                <div class="col-md-5 mb-4 mb-md-0">
+                    <img src="{{ url_for('static', filename='images/index左下图.jpg') }}" class="img-fluid rounded-lg shadow-sm" alt="系统介绍图">
+                </div>
+                <div class="col-md-7">
+                    <div class="ps-md-4">
+                        <div class="system-description">
+                            <p class="lead mb-4 fw-bold artistic-text">
+                                本系统使用心电图(ECG)和脉搏波(PPG)信号作为生物特征，提供安全可靠的身份认证解决方案。每个人的心电脉搏信号都是独一无二的，就像指纹一样，可以用于身份验证。
+                            </p>
                         </div>
                     </div>
                 </div>
-                <div class="d-flex justify-content-center mt-5">
-                    <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg mx-2">
-                        <i class="fas fa-sign-in-alt me-2"></i>认证
-                    </a>
-                    <a href="{{ url_for('register') }}" class="btn btn-success btn-lg mx-2">
-                        <i class="fas fa-user-plus me-2"></i>注册
-                    </a>
-                </div>
             </div>
-            <div class="card-footer text-center py-3">
-                <div class="small">
-                    <i class="fas fa-info-circle me-1"></i>
-                    需要连接心电脉搏设备才能使用本系统
+        </div>
+    </div>
+
+    <!-- 按钮区 -->
+    <div class="card shadow-sm border-0 rounded-lg">
+        <div class="card-body p-5">
+            <div class="row justify-content-center">
+                <div class="col-md-6 text-center">
+                    <div class="d-grid gap-3">
+                        <a href="{{ url_for('login') }}" class="btn btn-primary btn-lg py-3 rounded-lg" style="font-size: 1.2rem;">
+                            <i class="fas fa-sign-in-alt me-2"></i>登录/注册
+                        </a>
+                        <a href="{{ url_for('admin_login') }}" class="btn btn-outline-secondary btn-lg py-3 rounded-lg" style="font-size: 1.2rem;">
+                            <i class="fas fa-user-shield me-2"></i>管理入口
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
-</div>
+
+<style>
+    /* 轮播图样式 */
+    .carousel-inner {
+        max-height: 700px;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    
+    .carousel-inner img {
+        height: 700px;
+        object-fit: fill;
+        background-color: #f8f9fa;
+    }
+    
+    /* 圆角优化 */
+    .rounded-lg {
+        border-radius: 2rem !important;
+    }
+    
+    /* 卡片样式优化 */
+    .card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+    }
+    
+    .card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.15) !important;
+        transition: all 0.3s ease;
+    }
+    
+    /* 特性图标样式 */
+    .feature-icon-large i {
+        transition: all 0.3s ease;
+    }
+    
+    .card:hover .feature-icon-large i {
+        transform: scale(1.15);
+    }
+    
+    /* 系统描述样式 */
+    .system-description {
+        font-size: 1.05rem;
+        line-height: 1.8;
+    }
+    
+    /* 艺术文字样式 */
+    .artistic-text {
+        color: #000000;
+        letter-spacing: 0.5px;
+        font-weight: 700;
+    }
+    
+    /* 按钮样式调整 */
+    .btn-outline-secondary {
+        color: #6c757d;
+        border: 2px solid #6c757d;
+        background: white;
+        transition: all 0.3s ease;
+    }
+    
+    .btn-outline-secondary:hover {
+        background: #6c757d;
+        color: white;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(108, 117, 125, 0.3);
+    }
+    
+    /* 主按钮样式 */
+    .btn-primary {
+        transition: all 0.3s ease;
+    }
+    
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3);
+    }
+    
+    /* 页面整体背景 */
+    body {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    }
+</style>
 {% endblock %} 
