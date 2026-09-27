@@ -100,4 +100,46 @@ coverage.xml
 *.cover
 *.py,cover
 .hypothesis/
-.pytest_cache/ 
+.pytest_cache/
+
+# ===== 前端（React + Vite）=====
+node_modules/
+web_auth/frontend/node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+
+# 例外：由 Flask 直接托管的前端产物，必须入库，
+# 否则别人 clone 后无法直接启动（需自行 npm install + build）
+!web_auth/static/dist/
+!web_auth/static/dist/**
+
+# ===== 模型权重（体积大 / 可用训练脚本复现）=====
+*.pth
+*.pt
+*.onnx
+*.ckpt
+*.safetensors
+models/
+web_auth/models/
+
+# ===== 本地验证产物 / 截图 =====
+web_auth/_verify/
+_verify/
+_shot/
+*.screenshot.png
+
+# ===== 运行日志 =====
+web_auth/logs/
+logs/
+
+# ===== 本地产出 =====
+output/
+web_auth/output/
+
+# ===== AI / 编辑器本地状态 =====
+.workbuddy/
+.cursor/
+
+# ===== 内部分析文档（含本机环境描述，不入公开仓库）=====
+项目整理报告.md
