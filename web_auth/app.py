@@ -10,6 +10,7 @@ CardioCrypt — 心电/脉搏生物特征身份认证 Web 应用
 SYSTEM_AVAILABLE = True
 
 import os
+import re
 import sys
 import time
 import json
@@ -257,6 +258,33 @@ ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD_HASH = generate_password_hash(
     os.environ.get("ADMIN_PASSWORD", "admin123")
 )  # 默认口令仅供本地开发，部署前务必修改
+
+# --- 登录/验证接口限流 -----------------------------------------------------
+# 进程内滑动窗口计数，实现与部署注意事项见 web_auth/security.py。
+try:
+    from web_auth.security import RateLimiter
+except ImportError:
+    # 兼容以 `python web_auth/app.py` 直接运行时的模块搜索路径
+    import importlib.util as _ilu_security
+    _spec_security = _ilu_security.spec_from_file_location(
+        'security', os.path.join(base_dir, 'security.py')
+    )
+    _mod_security = _ilu_security.module_from_spec(_spec_security)
+    _spec_security.loader.exec_module(_mod_security)  # type: ignore
+    RateLimiter = _mod_security.RateLimiter
+
+LOGIN_LIMITER = RateLimiter(limit=10, window=60)         # /login 用户名尝试
+ADMIN_LOGIN_LIMITER = RateLimiter(limit=5, window=60)    # /manage/login 口令尝试
+VERIFY_START_LIMITER = RateLimiter(limit=10, window=60)  # /api/start_verification
+
+# 用户名白名单：允许中英文、数字、下划线、点、连字符，并封顶长度。
+# 只用来挡掉明显异常的输入（超长串、控制字符等），不额外施加业务限制。
+USERNAME_RE = re.compile(r'^[\w.\-]{1,64}$', re.UNICODE)
+
+
+def client_ip():
+    """取客户端 IP，用作限流的键。"""
+    return (request.remote_addr or 'unknown').strip()
 
 # 加载配置参数到本地变量中，方便使用
 def load_app_config():
@@ -1605,14 +1633,28 @@ def registration_status(username):
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form.get('username')
-        
+        ip = client_ip()
+        if not LOGIN_LIMITER.allow(ip):
+            logger.warning("登录尝试过于频繁，已限流: ip=%s", ip)
+            flash('尝试过于频繁，请稍后再试')
+            return redirect(url_for('login'))
+
+        # 认证开始前先清空会话，避免会话固定（Session Fixation）：
+        # 一定要在写入本次登录状态之前重置。
+        session.clear()
+
+        username = (request.form.get('username') or '').strip()
+        if not USERNAME_RE.match(username):
+            flash('用户名或验证信息无效')
+            return redirect(url_for('login'))
+
         # 检查用户是否存在
+        # 注意：对外不区分「用户不存在」与「其它失败」，避免用户名枚举
         user = mongo.db.users.find_one({'username': username})
         if not user:
-            flash('用户不存在')
+            flash('用户名或验证信息无效')
             return redirect(url_for('login'))
-        
+
         # 重定向到验证页面
         session['pending_login'] = username
         return redirect(url_for('verify'))
@@ -1633,7 +1675,12 @@ def verify():
 def start_verification():
     if 'pending_login' not in session:
         return jsonify({'success': False, 'error': '无效的登录会话'})
-    
+
+    ip = client_ip()
+    if not VERIFY_START_LIMITER.allow(ip):
+        logger.warning("发起验证过于频繁，已限流: ip=%s", ip)
+        return jsonify({'success': False, 'error': '操作过于频繁，请稍后再试'}), 429
+
     username = session['pending_login']
     
     # 获取已连接的设备信息（如果存在）并保存到线程安全的变量中
@@ -2506,14 +2553,32 @@ def get_dashboard_data():
 @app.route('/manage/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        
+        ip = client_ip()
+        if not ADMIN_LOGIN_LIMITER.allow(ip):
+            logger.warning("管理员登录尝试过于频繁，已限流: ip=%s", ip)
+            flash('尝试过于频繁，请稍后再试')
+            return redirect(url_for('admin_login'))
+
+        username = (request.form.get('username') or '').strip()
+        password = request.form.get('password') or ''
+
+        # 长度封顶：避免超长口令让口令哈希校验消耗大量 CPU
+        if len(username) > 128 or len(password) > 512:
+            logger.warning("管理员登录参数异常: ip=%s", ip)
+            flash('管理员账号或密码错误')
+            return redirect(url_for('admin_login'))
+
+        # 认证开始前先清空会话，避免会话固定（Session Fixation）
+        session.clear()
+
         if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
             session['admin'] = True
+            logger.info("管理员登录成功: ip=%s username=%s", ip, username)
             return redirect(url_for('admin_dashboard'))
-        else:
-            flash('管理员账号或密码错误')
+
+        logger.warning("管理员登录失败: ip=%s username=%r", ip, username)
+        flash('管理员账号或密码错误')
+        return redirect(url_for('admin_login'))
     
     return render_template('admin_login.html')
 
