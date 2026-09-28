@@ -450,7 +450,11 @@ ADMIN_PASSWORD_HASH = generate_password_hash(
 # --- 登录/验证接口限流 -----------------------------------------------------
 # 进程内滑动窗口计数，实现与部署注意事项见 web_auth/security.py。
 try:
-    from web_auth.security import RateLimiter
+    from web_auth.security import (
+        CSRFProtector,
+        RateLimiter,
+        clear_session_keep_csrf,
+    )
 except ImportError:
     # 兼容以 `python web_auth/app.py` 直接运行时的模块搜索路径
     import importlib.util as _ilu_security
@@ -459,11 +463,30 @@ except ImportError:
     )
     _mod_security = _ilu_security.module_from_spec(_spec_security)
     _spec_security.loader.exec_module(_mod_security)  # type: ignore
+    CSRFProtector = _mod_security.CSRFProtector
     RateLimiter = _mod_security.RateLimiter
+    clear_session_keep_csrf = _mod_security.clear_session_keep_csrf
 
 LOGIN_LIMITER = RateLimiter(limit=10, window=60)         # /login 用户名尝试
 ADMIN_LOGIN_LIMITER = RateLimiter(limit=5, window=60)    # /manage/login 口令尝试
 VERIFY_START_LIMITER = RateLimiter(limit=10, window=60)  # /api/start_verification
+
+# --- CSRF 保护 -------------------------------------------------------------
+# 所有写操作（POST/PUT/PATCH/DELETE）都必须携带与会话绑定的令牌，
+# 否则一律按跨站请求伪造拒绝。GET/HEAD/OPTIONS/TRACE 是规范定义的
+# 「安全方法」，不改变服务端状态，天然豁免。
+#
+# 令牌的获取方式（详见 web_auth/security.py::CSRFProtector）：
+#   - SPA：启动时 GET /api/csrf-token，之后放进 X-CSRFToken 请求头
+#   - 旧版页面：模板渲染时注入隐藏字段与 meta 标签，ajax 由全局钩子带上
+CSRF_ENABLED = os.environ.get('CSRF_ENABLED', '1').strip().lower() not in (
+    '0', 'false', 'no', 'off'
+)
+CSRF = CSRFProtector()
+
+# 供 SPA 适配层使用（/api/csrf-token 需要下发令牌并感知开关状态）
+app.config['CSRF_ENABLED'] = CSRF_ENABLED
+app.config['CSRF_PROTECTOR'] = CSRF
 
 # 用户名白名单：允许中英文、数字、下划线、点、连字符，并封顶长度。
 # 只用来挡掉明显异常的输入（超长串、控制字符等），不额外施加业务限制。
@@ -473,6 +496,34 @@ USERNAME_RE = re.compile(r'^[\w.\-]{1,64}$', re.UNICODE)
 def client_ip():
     """取客户端 IP，用作限流的键。"""
     return (request.remote_addr or 'unknown').strip()
+
+
+@app.before_request
+def _verify_csrf():
+    """对所有写操作做 CSRF 校验（放行时返回 None）。"""
+    if not CSRF_ENABLED or CSRF.validate(session, request):
+        return None
+
+    logger.warning(
+        "CSRF 校验失败: method=%s path=%s ip=%s",
+        request.method, request.path, client_ip(),
+    )
+    # 接口调用方期望 JSON；页面表单则给一句能看懂的中文提示
+    if request.path.startswith('/api/') or request.is_json:
+        return jsonify({'success': False, 'error': '请求校验失败，请刷新页面后重试'}), 403
+    flash('页面已过期，请刷新后重试')
+    return redirect(url_for('index'))
+
+
+@app.context_processor
+def _inject_csrf_token():
+    """
+    向模板注入 csrf_token
+
+    旧版 Jinja2 页面靠它渲染隐藏字段，以及给 ajax 设全局请求头。
+    这里一并确保当前会话已有令牌。
+    """
+    return {'csrf_token': CSRF.ensure(session) if CSRF_ENABLED else ''}
 
 # 加载配置参数到本地变量中，方便使用
 def load_app_config():
@@ -1855,7 +1906,9 @@ def login():
 
         # 认证开始前先清空会话，避免会话固定（Session Fixation）：
         # 一定要在写入本次登录状态之前重置。
-        session.clear()
+        # 保留 CSRF 令牌 —— 它不属于身份状态，一并清掉会让紧随其后的
+        # 下一次提交因缺令牌被拒（详见 security.clear_session_keep_csrf）。
+        clear_session_keep_csrf(session)
 
         username = (request.form.get('username') or '').strip()
         if not USERNAME_RE.match(username):
@@ -2789,7 +2842,8 @@ def admin_login():
             return redirect(url_for('admin_login'))
 
         # 认证开始前先清空会话，避免会话固定（Session Fixation）
-        session.clear()
+        # 同样保留 CSRF 令牌，理由见 login 处的说明。
+        clear_session_keep_csrf(session)
 
         if username == ADMIN_USERNAME and check_password_hash(ADMIN_PASSWORD_HASH, password):
             session['admin'] = True

@@ -67,7 +67,33 @@ def register_spa(app, mongo, admin_required):
         })
 
     # ---------------------------------------------------------------
-    # 二、退出（JSON 语义，供 SPA 调用）
+    # 二、CSRF 令牌
+    # ---------------------------------------------------------------
+    @app.route('/api/csrf-token', methods=['GET'])
+    def spa_csrf_token():
+        """
+        下发当前会话的 CSRF 令牌。
+
+        为什么必须是接口：SPA 的 index.html 是构建好的静态文件，无法在渲染时
+        注入令牌；而令牌存在 session cookie 里（httponly），JS 也读不到。
+        故先用 GET 取一次，之后放进 X-CSRFToken 请求头。
+
+        令牌本身不是秘密 —— 它只在「跨站」语境下起鉴别作用：攻击者能从自己
+        的会话拿到一个合法令牌，但读不到受害者会话里的那一个（同源策略）。
+        """
+        protector = app.config.get('CSRF_PROTECTOR')
+        if protector is None or not app.config.get('CSRF_ENABLED', True):
+            # 未启用时下发空令牌，前端据此跳过请求头，便于兼容旧调用方
+            return jsonify({'success': True, 'enabled': False, 'token': ''})
+
+        return jsonify({
+            'success': True,
+            'enabled': True,
+            'token': protector.ensure(session),
+        })
+
+    # ---------------------------------------------------------------
+    # 三、退出（JSON 语义，供 SPA 调用）
     # ---------------------------------------------------------------
     @app.route('/api/logout_json', methods=['GET', 'POST'])
     def spa_logout_json():
@@ -85,7 +111,7 @@ def register_spa(app, mongo, admin_required):
         return jsonify({'success': True})
 
     # ---------------------------------------------------------------
-    # 三、管理后台数据接口
+    # 四、管理后台数据接口
     # ---------------------------------------------------------------
     @app.route('/api/admin/users', methods=['GET'])
     @admin_required
@@ -126,7 +152,7 @@ def register_spa(app, mongo, admin_required):
             return jsonify({'success': False, 'error': str(e)}), 500
 
     # ---------------------------------------------------------------
-    # 四、前端静态资源与路由回退
+    # 五、前端静态资源与路由回退
     # ---------------------------------------------------------------
     @app.route('/static/dist/<path:filename>')
     def spa_dist_assets(filename):
@@ -190,7 +216,7 @@ def register_spa(app, mongo, admin_required):
     app.config['SPA_ROUTES'] = SPA_ROUTES
     app.config['SPA_SERVE_INDEX'] = _serve_index
 
-    logger.info("SPA 适配层注册完成（新增 JSON 接口 5 个 + 静态托管）")
+    logger.info("SPA 适配层注册完成（新增 JSON 接口 6 个 + 静态托管）")
     return True
 
 

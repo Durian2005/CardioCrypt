@@ -20,6 +20,8 @@
                     {% endwith %}
                     
                     <form method="post" action="{{ url_for('admin_login') }}">
+                        {# CSRF 令牌：与后端会话绑定，缺它会被拒 #}
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <div class="form-group mb-3">
                             <label for="username">管理员名称</label>
                             <input type="text" class="form-control" id="username" name="username" required>
