@@ -73,7 +73,11 @@ def load_model(model_path: str, device: torch.device = None) -> Tuple[nn.Module,
         logger.info(f"尝试加载模型: {model_path}")
         
         # 加载检查点
-        checkpoint = torch.load(model_path, map_location=device)
+        # 显式声明 weights_only=True：只反序列化张量与基础类型，不执行任意 pickle 对象。
+        # torch>=2.6 已默认如此，这里写出来是为了锁定行为 ——
+        # model_path 来自数据库，若将来迁移模型库或降级依赖导致默认值变化，
+        # 就会变成反序列化代码执行的风险。
+        checkpoint = torch.load(model_path, map_location=device, weights_only=True)
         
         # 提取元数据
         metadata = {}

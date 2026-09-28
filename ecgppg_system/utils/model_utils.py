@@ -55,7 +55,9 @@ def load_model(model, load_path, device=None):
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             
         # 加载数据
-        checkpoint = torch.load(load_path, map_location=device)
+        # 显式声明 weights_only=True：只反序列化张量与基础类型，不执行任意 pickle 对象。
+        # torch>=2.6 已默认如此，显式写出来是为锁定行为，避免将来依赖变化失效。
+        checkpoint = torch.load(load_path, map_location=device, weights_only=True)
         
         # 处理状态字典
         if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
