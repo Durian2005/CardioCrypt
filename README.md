@@ -25,20 +25,40 @@
 
 ```
 .
-├── web_auth/              # Web 应用
-│   ├── app.py             # Flask 主程序（路由与业务逻辑）
-│   ├── spa_adapter.py     # React SPA 适配层（GET→SPA，POST→原逻辑）
-│   ├── frontend/          # React 前端源码
+├── web_auth/                  # Web 应用
+│   ├── __init__.py            # 应用工厂 create_app()（注册蓝图 / 适配层 / 全局钩子）
+│   ├── app.py                 # 开发服务器入口（薄壳，只读 HOST / PORT / DEBUG）
+│   ├── config.py              # 配置分层：环境变量读取 + 日志初始化
+│   ├── extensions.py          # 扩展实例（PyMongo / 限流器 / CSRF），用于打断循环导入
+│   ├── state.py               # 进程内可变状态 + 闲置回收
+│   ├── core.py                # 算法层导入与降级、模型缓存、系统初始化、权限装饰器
+│   ├── security.py            # 限流器与 CSRF 防护原语
+│   ├── blueprints/            # 路由分层
+│   │   ├── auth.py            #   首页 / 注册 / 登录登出
+│   │   ├── device.py          #   设备扫描连接 / 数据采集 / 认证执行
+│   │   ├── dashboard.py       #   用户仪表盘与状态轮询
+│   │   └── admin.py           #   管理后台
+│   ├── services/              # 无状态业务函数
+│   │   ├── signals.py         #   信号指标提取与特征组装
+│   │   └── health.py          #   心率 / 情绪 / 告警等级计算
+│   ├── spa_adapter.py         # React SPA 适配层（GET→SPA，POST→原逻辑）
+│   ├── frontend/              # React 前端源码
 │   │   └── src/
-│   │       ├── pages/     # 页面
-│   │       ├── components/# 组件
-│   │       └── lib/       # API 客户端与工具
-│   ├── static/            # 静态资源（含前端构建产物 dist/）
-│   └── templates/         # 旧版 Jinja2 模板（classic 模式保留）
-├── ecgppg_system/         # 信号处理 / 设备 / 模型 / 可视化 核心库
-├── model_example/         # 模型封装模块（训练、评估、推理）
+│   │       ├── pages/         # 页面
+│   │       ├── components/    # 组件
+│   │       └── lib/           # API 客户端与工具
+│   ├── static/                # 静态资源（含前端构建产物 dist/）
+│   └── templates/             # 旧版 Jinja2 模板（classic 模式保留）
+├── ecgppg_system/             # 信号处理 / 设备 / 模型 / 可视化 核心库
+├── model_example/             # 模型封装模块（训练、评估、推理）
+├── tests/                     # pytest 回归集
+├── pytest.ini
 └── requirements.txt
 ```
+
+后端已从单文件拆分为「工厂 + 分层模块 + 4 个蓝图」：原 `app.py` 由 3000 余行收缩到
+不足 60 行的入口壳，路由按职责分散到 `blueprints/`，配置、扩展实例、进程内状态与
+算法层适配各自独立成模块。改配置或加路由不必再在一个巨文件里翻找。
 
 ## 快速开始
 
@@ -67,6 +87,24 @@ npm run build                  # 产物输出到 ../static/dist/
 ```bash
 python web_auth/app.py         # 默认 http://127.0.0.1:5000
 ```
+
+### 4. 运行测试
+
+```bash
+venv\Scripts\python.exe -m pytest
+```
+
+测试通过环境变量把 `MONGO_URI` 指向**独立临时库** `ecg_auth_db_pytest`
+（在 `tests/conftest.py` 顶部注入，必须早于 `import web_auth`），不会读写开发库
+`ecg_auth_db`。运行前请确保本地 MongoDB 可用。
+
+| 文件 | 覆盖范围 |
+|---|---|
+| `tests/test_security.py` | 限流器边界与窗口滑动、CSRF 令牌的生成 / 轮换 / 会话绑定 |
+| `tests/test_auth_flow.py` | 登录 / 注册 / 登出流程、反用户枚举、会话固定防护、无后门回归 |
+| `tests/test_authentication.py` | 信号相似度的性质型断言，并固定两处已知缺陷 |
+| `tests/test_admin_api.py` | 管理接口的权限边界、口令长度与限流、响应字段脱敏 |
+| `tests/test_spa.py` | SPA 适配层的会话投影、令牌下发、未知路径仍返回真 404 |
 
 ## 配置项（环境变量）
 
@@ -97,8 +135,11 @@ python web_auth/app.py         # 默认 http://127.0.0.1:5000
 > 生产环境请改用 WSGI 服务器，并保持 `FLASK_DEBUG=0`：
 >
 > ```bash
-> gunicorn -w 1 --threads 8 -b 127.0.0.1:5000 web_auth.app:app
+> gunicorn -w 1 --threads 8 -b 127.0.0.1:5000 'web_auth:create_app()'
 > ```
+>
+> 其余 WSGI 服务器同理，加载目标为应用工厂 `web_auth:create_app()`（`web_auth.app:app`
+> 作为开发入口也仍然可用）。
 >
 > 说明：本项目使用进程内的设备连接状态与模型缓存，因此**建议单进程多线程**（`-w 1 --threads N`）。
 > 会话密钥未显式配置时会自动生成并持久化到 `web_auth/.flask_secret_key`，同一部署内的多个进程
@@ -115,19 +156,44 @@ python web_auth/app.py         # 默认 http://127.0.0.1:5000
 > 内存中的注册 / 验证状态会按 `STATE_TTL_SECONDS` 自动回收闲置条目；
 > 前端轮询状态接口时会刷新活跃时间，因此进行中的流程不会被误清。
 
+## 安全设计
+
+下表列出各项防护的**设计意图**与**已知边界**。写清楚边界和写清楚措施同样重要 ——
+一个「看起来有防护、实际在多进程下打折」的限流器，比没有限流器更容易让人误判。
+
+| 措施 | 设计意图 | 已知边界 / 代价 |
+|---|---|---|
+| 认证前清空会话 | 防会话固定攻击：攻击者预先植入的会话 ID 在认证成功后失效 | 清空前会保留 CSRF 令牌（`clear_session_keep_csrf`），否则紧随其后的表单提交必然失败 |
+| CSRF 双层令牌 | 令牌与会话绑定，覆盖 JSON 请求头（SPA）与隐藏表单字段（原生页面）两条通路 | 令牌与会话共存亡；脚本调用写接口前必须先 `GET /api/csrf-token` |
+| 登录频率限制 | 同一 IP 每分钟 10 次；管理登录使用独立配额，避免两者互相挤占 | **进程内**滑动窗口。多 worker 部署时各自计数，等效配额为 `N × 10`；只有单进程多线程下语义才完全成立 |
+| 统一失败措辞 | 不区分「用户不存在」与「口令错误」，消除用户名枚举 | 用户拿不到具体原因，排障需查服务端日志 |
+| 认证结果不可旁路 | 判定结论只来自算法输出，代码中不存在任何「演示模式」改写开关 | 副作用是无真实硬件时注册 / 认证流程走不通，必须接入设备才能完整演示 |
+| 上传体积上限 | `MAX_CONTENT_LENGTH` 默认 16MB，避免超长请求体拖垮进程 | 超限直接返回 413，长信号需自行分段 |
+| 错误信息不泄漏路径 | 管理接口只返回模型文件名，不下发本机绝对路径 | 该字段仍被两个管理页渲染，改名会连带影响前端与模板 |
+| 密钥可持久化 | 未显式配置时自动生成并写入 `web_auth/.flask_secret_key`，使同机多进程共享密钥 | 生产环境仍应显式配置 `FLASK_SECRET_KEY`；密钥文件在文件系统不可写时退回进程内随机值并打印告警 |
+
+> **部署形态约束**：设备连接状态、验证结果与模型缓存都是**进程内状态**，
+> 因此必须**单进程多线程**运行（`-w 1 --threads N`）。多进程会让请求落到互不相见的副本上 ——
+> 限流计数、设备状态、进行中的采集流程各算各的。
+>
+> **后续规划**：把设备会话、验证结果与模型缓存挪到进程外（Redis 或独立设备服务），
+> 是支持多用户并发的真正前提；本项目按课程实践范围暂不实施。
+
 ## 说明
 
 - **模型权重不入库**：`*.pth` 已加入 `.gitignore`。个人模型在用户完成注册采集后由训练流程生成，可用仓库内训练脚本复现。
 - **前端适配层**：`spa_adapter.py` 采用「包装既有视图函数」的方式，使 GET 请求返回 SPA、POST 请求保持原有表单语义，后端业务逻辑无需改动。设置 `FRONTEND_MODE=classic` 可随时切回 Jinja2 页面。
+- **一份保留但已废弃的认证实现**：`ecgppg_system/utils/authentication.py` 是早期原型的认证实现，当前**没有任何调用方**，且有两处已知缺陷（构造时依赖并不存在的 `settings.DPI`、DTW 分支静默返回 0.0）。已在模块头标注废弃并保留实现 —— 保留是为了不抹去原始贡献者的代码与提交历史。实际在用的是 `model_example/authentication.py`。
+- **算法层可降级**：`ecgppg_system` / `model_example` 导入失败时，Web 应用仍能启动并给出明确报错，而不是让 import 直接炸掉整个进程，便于单独调试 Web 层。
 
 ## 贡献者
 
 | 贡献者 | 主要贡献 |
 |---|---|
-| [@Zzthird](https://github.com/Zzthird) | **项目原始原型**：设备接入（BLE 蓝牙 / 串口）、信号采集与预处理流水线、BiLSTM 模型训练与认证比对逻辑、MongoDB 存储层 |
-| [@Durian2005](https://github.com/Durian2005) | **前端重构与开源整理**：React SPA 全站重建、Flask 适配层、项目脱敏与文档、发布维护 |
+| [@Zzthird](https://github.com/Zzthird) | **项目原始原型**：设备接入（BLE 蓝牙 / 串口）、信号采集与预处理流水线、BiLSTM + Attention 模型训练与认证比对逻辑、MongoDB 存储层 |
+| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；移除认证结果旁路改写、补齐 CSRF 防护与登录限流、密钥持久化、索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（78 例）；项目脱敏、文档与发布维护 |
 
-> 原始原型完成于 2025 年 8 月，前端重构与开源整理完成于 2026 年 9 月。
+> 原始原型完成于 2025 年 8 月；前端重构、安全加固与工程整理完成于 2026 年 9 月。
 > 仓库保留了完整的开发提交历史，贡献者名单由提交作者自动统计。
 
 ## 许可
