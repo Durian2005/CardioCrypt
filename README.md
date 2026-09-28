@@ -80,6 +80,10 @@ python web_auth/app.py         # 默认 http://127.0.0.1:5000
 | `FLASK_HOST` | `127.0.0.1` | 监听地址。**默认只允许本机访问**；改为 `0.0.0.0` 需自行确认网络环境可信 |
 | `FLASK_PORT` | `5000` | 监听端口 |
 | `FRONTEND_MODE` | `spa` | `spa` 使用 React 前端；`classic` 回退 Jinja2 模板 |
+| `LOG_LEVEL` | `INFO` | 日志级别。`DEBUG` 会连带打印请求体等敏感内容，仅限本机排障临时开启 |
+| `LOG_FILE` | 空（只输出到控制台） | 设置后额外写入日志文件并自动轮转（5MB × 3）。相对路径按 `web_auth/logs/` 解析 |
+| `MAX_CONTENT_LENGTH` | `16777216`（16MB） | 请求体大小上限 |
+| `MONGO_SERVER_SELECTION_TIMEOUT_MS` | `5000` | 数据库选择超时。`MONGO_URI` 中已指定时以 URI 为准 |
 
 管理后台入口：`/manage/login`
 
@@ -96,6 +100,9 @@ python web_auth/app.py         # 默认 http://127.0.0.1:5000
 > 说明：本项目使用进程内的设备连接状态与模型缓存，因此**建议单进程多线程**（`-w 1 --threads N`）。
 > 另外 `FLASK_SECRET_KEY` 未设置时会随机生成，多 worker 之间密钥不一致会导致登录状态随机失效，
 > 多进程部署务必显式配置该变量。
+>
+> 数据库索引（含 `username` 唯一索引）在**进程启动时**自动创建，与使用开发服务器还是 WSGI 服务器无关。
+> 若启动日志出现「系统初始化未完成」，说明当时数据库不可达、索引未建立 —— 请确认 MongoDB 可访问后重启。
 
 ## 说明
 
