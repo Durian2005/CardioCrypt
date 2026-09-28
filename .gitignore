@@ -10,8 +10,10 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
-lib64/
+# 锚定到仓库根：Python 打包模板里的 lib/ 规则会误伤嵌套路径
+# （web_auth/frontend/src/lib/ 就曾因此整目录未入库）
+/lib/
+/lib64/
 parts/
 sdist/
 var/
