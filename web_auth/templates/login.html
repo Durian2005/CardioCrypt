@@ -20,7 +20,7 @@
                     </p>
                     
                 </div>
-                <form method="post" action="{{ url_for('login') }}">
+                <form method="post" action="{{ url_for('auth.login') }}">
                     {# CSRF 令牌：与后端会话绑定，缺它会被拒 #}
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
@@ -34,7 +34,7 @@
                         <button type="submit" class="btn btn-primary btn-lg">
                             <i class="fas fa-arrow-right me-2"></i>身份认证
                         </button>
-                        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                        <a href="{{ url_for('auth.index') }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left me-2"></i>返回首页
                         </a>
                     </div>
@@ -42,7 +42,7 @@
             </div>
             <div class="card-footer text-center py-3">
                 <div class="small">
-                    没有账号？<a href="{{ url_for('register') }}">立即注册</a>
+                    没有账号？<a href="{{ url_for('auth.register') }}">立即注册</a>
                 </div>
             </div>
         </div>

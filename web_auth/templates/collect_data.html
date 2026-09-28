@@ -126,7 +126,7 @@
                             <i class="fas fa-check-circle text-success fa-5x"></i>
                             <h4 class="mt-3">注册成功！</h4>
                             <p>您的ECG身份特征已成功注册</p>
-                            <a href="{{ url_for('login') }}" class="btn btn-primary mt-3">
+                            <a href="{{ url_for('auth.login') }}" class="btn btn-primary mt-3">
                                 <i class="fas fa-sign-in-alt me-2"></i>前往认证
                             </a>
                         </div>
@@ -134,7 +134,7 @@
                             <i class="fas fa-times-circle text-danger fa-5x"></i>
                             <h4 class="mt-3">注册失败</h4>
                             <p>您的ECG数据验证未通过，请重试</p>
-                            <a href="{{ url_for('register') }}" class="btn btn-primary mt-3">
+                            <a href="{{ url_for('auth.register') }}" class="btn btn-primary mt-3">
                                 <i class="fas fa-redo me-2"></i>重新注册
                             </a>
                         </div>

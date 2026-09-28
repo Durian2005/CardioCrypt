@@ -334,7 +334,7 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav ml-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('admin_logout') }}">退出认证</a>
+                        <a class="nav-link" href="{{ url_for('admin.admin_logout') }}">退出认证</a>
                     </li>
                 </ul>
             </div>
@@ -371,7 +371,7 @@
                         <h5>系统参数配置</h5>
                     </div>
                     <div class="card-body">
-                        <form method="POST" action="{{ url_for('update_params') }}">
+                        <form method="POST" action="{{ url_for('admin.update_params') }}">
                             {# CSRF 令牌：与后端会话绑定，缺它会被拒 #}
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                             <input type="hidden" name="section" value="model">
@@ -537,7 +537,7 @@
                             </div>
                             
                             <!-- 批量删除表单 -->
-                            <form id="batchDeleteForm" method="POST" action="{{ url_for('batch_delete_users') }}" style="display: none;">
+                            <form id="batchDeleteForm" method="POST" action="{{ url_for('admin.batch_delete_users') }}" style="display: none;">
                                 {# CSRF 令牌需与动态追加的用户项共存 #}
                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                 <!-- 动态添加用户选择 -->

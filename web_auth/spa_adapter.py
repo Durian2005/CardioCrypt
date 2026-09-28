@@ -245,17 +245,20 @@ def make_frontend_switch(app, mode):
         app.config['FRONTEND_MODE'] = 'classic'
         return 'classic'
 
-    # 需要被前端接管的端点名 -> 说明
-    # 只接管「页面渲染」，不接管 API
+    # 需要被前端接管的端点名 -> 路径
+    # 只接管「页面渲染」，不接管 API。
+    # 注意：路由已按业务域拆进蓝图（web_auth/blueprints/），端点名带上了
+    # 蓝图前缀，这里必须跟着改 —— 否则会静默降级成「未找到端点，跳过接管」，
+    # 页面照常返回 Jinja2 模板，表现为「前端切换没生效」。
     SPA_ENDPOINTS = {
-        'index': '/',
-        'login': '/login',
-        'register': '/register',
-        'verify': '/verify',
-        'dashboard': '/dashboard',
-        'collect_data': '/collect_data/<username>',
-        'admin_login': '/manage/login',
-        'admin_dashboard': '/manage/dashboard',
+        'auth.index': '/',
+        'auth.login': '/login',
+        'auth.register': '/register',
+        'auth.verify': '/verify',
+        'dashboard.dashboard': '/dashboard',
+        'auth.collect_data': '/collect_data/<username>',
+        'admin.admin_login': '/manage/login',
+        'admin.admin_dashboard': '/manage/dashboard',
     }
 
     for endpoint in list(SPA_ENDPOINTS.keys()):
