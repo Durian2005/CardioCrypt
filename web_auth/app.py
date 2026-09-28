@@ -256,6 +256,7 @@ mongo = PyMongo(app, serverSelectionTimeoutMS=_MONGO_SELECTION_TIMEOUT_MS)
 current_registration_data = {}
 registration_lock = threading.Lock()
 user_models = {}  # 存储用户模型的字典，作为LRU缓存
+user_models_lock = threading.Lock()  # 模型缓存字典的读改写锁（LRU 位置调整 / 淘汰）
 MAX_CACHED_MODELS = 50  # 最大缓存模型数量
 verification_results = {}  # 存储验证结果的字典
 verification_lock = threading.Lock()  # 验证结果的线程锁
@@ -395,14 +396,16 @@ def get_user_model(username):
     if not SYSTEM_AVAILABLE:
         return None
     
-    try:
-        # 如果模型已在缓存中，直接返回
+    # 缓存命中：只锁住字典的读改写（LRU 位置调整），锁内不做 IO。
+    # 否则并发线程同时 pop/insert 可能互相覆盖，导致条目丢失或淘汰顺序错乱。
+    with user_models_lock:
         if username in user_models:
             # 将此用户模型移至缓存"最新"位置 (LRU策略)
             model = user_models.pop(username)
             user_models[username] = model  # 重新添加到字典末尾
             return model
-        
+    
+    try:
         # 从数据库获取用户信息
         user = mongo.db.users.find_one({'username': username})
         if not user or 'model_path' not in user:
@@ -429,14 +432,19 @@ def get_user_model(username):
             # 设置模型为评估模式
             model.eval()
             
-            # 如果缓存已满，移除最久未使用的模型
-            if len(user_models) >= MAX_CACHED_MODELS:
-                oldest_user = next(iter(user_models))
-                del user_models[oldest_user]
-                logger.info(f"缓存已满，移除最久未使用的模型: {oldest_user}")
-            
-            # 添加到缓存
-            user_models[username] = model
+            # 写入缓存：长度检查与插入/淘汰必须原子，
+            # 否则并发下"缓存已满"的判断会失效，字典长度可能超出上限。
+            # 模型加载本身是重 IO，刻意留在锁外，避免把并发加载串行化。
+            with user_models_lock:
+                # 如果缓存已满，移除最久未使用的模型
+                if len(user_models) >= MAX_CACHED_MODELS:
+                    oldest_user = next(iter(user_models))
+                    del user_models[oldest_user]
+                    logger.info(f"缓存已满，移除最久未使用的模型: {oldest_user}")
+
+                # 添加到缓存
+                user_models[username] = model
+
             logger.info(f"已加载用户 {username} 的模型")
             return model
             
