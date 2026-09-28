@@ -6,8 +6,8 @@ CardioCrypt — 心电/脉搏生物特征身份认证 Web 应用
 基于 Flask 的 Web 界面，提供用户注册与身份认证功能
 """
 
-# 设置系统可用性标志，控制模型训练和验证流程
-SYSTEM_AVAILABLE = True
+# 说明：SYSTEM_AVAILABLE 由下方核心模块导入的结果决定（见「导入 CardioCrypt 核心模块」），
+# 这里不再预设初值，避免出现"赋值后立即被覆盖"的误导性代码。
 
 import os
 import re
@@ -75,8 +75,6 @@ logger = logging.getLogger('web_auth')
 
 # 获取当前文件所在目录
 base_dir = os.path.dirname(os.path.abspath(__file__))
-# 定义管理员配置文件路径
-admin_config_path = os.path.join(base_dir, 'admin_config.json')
 
 # 配置ecgppg_system的日志处理器，避免重复输出
 try:
@@ -481,7 +479,6 @@ def get_user_model(username):
 # 初始化系统组件
 def init_system():
     try:
-        # 设置模型目录
         # 检查索引是否存在，不存在则创建
         mongo.db.users.create_index([("username", pymongo.ASCENDING)], unique=True)
         mongo.db.auth_history.create_index([("username", pymongo.ASCENDING), ("timestamp", pymongo.DESCENDING)])
@@ -568,8 +565,7 @@ def scan_devices():
         # 扫描BLE设备
         if device_type in ['ble', 'all']:
             try:
-                # 创建异步事件循环
-                import asyncio
+                # 创建异步事件循环（asyncio 已在模块顶部导入）
                 from bleak import BleakScanner
                 
                 loop = asyncio.new_event_loop()
@@ -680,8 +676,7 @@ def connect_device():
         # 根据设备类型选择连接方法
         if device_type == 'ble':
             # 连接BLE设备
-            # 创建异步事件循环
-            import asyncio
+            # 创建异步事件循环（asyncio 已在模块顶部导入）
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             
@@ -1155,8 +1150,7 @@ def start_data_collection():
                     except Exception as e:
                         logger.error(f"数据解析失败: {str(e)}")
                 
-                # 使用现有的事件循环而不是创建新的循环
-                import asyncio
+                # 使用现有的事件循环而不是创建新的循环（asyncio 已在模块顶部导入）
                 
                 # 创建异步事件循环用于数据采集
                 loop = asyncio.new_event_loop()
