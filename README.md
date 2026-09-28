@@ -75,7 +75,7 @@ python web_auth/app.py         # 默认 http://127.0.0.1:5000
 | `MONGO_URI` | `mongodb://localhost:27017/ecg_auth_db` | MongoDB 连接串 |
 | `ADMIN_USERNAME` | `admin` | 管理后台账号 |
 | `ADMIN_PASSWORD` | `admin123` | 管理后台口令 —— **部署前必须修改** |
-| `FLASK_SECRET_KEY` | 随机生成 | 会话密钥，多实例部署时应固定 |
+| `FLASK_SECRET_KEY` | 自动生成并持久化到 `web_auth/.flask_secret_key` | 会话签名密钥。未设置时自动生成一份本地密钥文件，使同一部署内的多个进程共享同一密钥 |
 | `FLASK_DEBUG` | `0` | 设为 `1` 开启调试模式。**会暴露可执行任意代码的调试器，仅限本机临时使用** |
 | `FLASK_HOST` | `127.0.0.1` | 监听地址。**默认只允许本机访问**；改为 `0.0.0.0` 需自行确认网络环境可信 |
 | `FLASK_PORT` | `5000` | 监听端口 |
@@ -84,6 +84,9 @@ python web_auth/app.py         # 默认 http://127.0.0.1:5000
 | `LOG_FILE` | 空（只输出到控制台） | 设置后额外写入日志文件并自动轮转（5MB × 3）。相对路径按 `web_auth/logs/` 解析 |
 | `MAX_CONTENT_LENGTH` | `16777216`（16MB） | 请求体大小上限 |
 | `MONGO_SERVER_SELECTION_TIMEOUT_MS` | `5000` | 数据库选择超时。`MONGO_URI` 中已指定时以 URI 为准 |
+| `CSRF_ENABLED` | `1` | 写操作的 CSRF 校验开关。**默认开启，不建议关闭** |
+| `STATE_TTL_SECONDS` | `3600` | 内存中注册 / 验证状态的闲置回收时长（秒） |
+| `STATE_CLEANUP_INTERVAL` | `300` | 闲置状态的扫描间隔（秒） |
 
 管理后台入口：`/manage/login`
 
@@ -98,11 +101,19 @@ python web_auth/app.py         # 默认 http://127.0.0.1:5000
 > ```
 >
 > 说明：本项目使用进程内的设备连接状态与模型缓存，因此**建议单进程多线程**（`-w 1 --threads N`）。
-> 另外 `FLASK_SECRET_KEY` 未设置时会随机生成，多 worker 之间密钥不一致会导致登录状态随机失效，
-> 多进程部署务必显式配置该变量。
+> 会话密钥未显式配置时会自动生成并持久化到 `web_auth/.flask_secret_key`，同一部署内的多个进程
+> 因此共享同一密钥、不会出现登录状态随机失效；生产环境仍建议显式配置 `FLASK_SECRET_KEY`。
+>
+> **CSRF 防护默认开启**：所有写操作（POST/PUT/PATCH/DELETE）都必须携带与会话绑定的令牌。
+> 页面由后端渲染时令牌会自动注入（隐藏字段 + `meta` 标签 + ajax 全局请求头）。
+> 若自行编写脚本调用写接口，需先 `GET /api/csrf-token` 取令牌，再以 `X-CSRFToken`
+> 请求头（或表单字段 `csrf_token`）提交；GET 等安全方法不受影响。
 >
 > 数据库索引（含 `username` 唯一索引）在**进程启动时**自动创建，与使用开发服务器还是 WSGI 服务器无关。
 > 若启动日志出现「系统初始化未完成」，说明当时数据库不可达、索引未建立 —— 请确认 MongoDB 可访问后重启。
+>
+> 内存中的注册 / 验证状态会按 `STATE_TTL_SECONDS` 自动回收闲置条目；
+> 前端轮询状态接口时会刷新活跃时间，因此进行中的流程不会被误清。
 
 ## 说明
 
