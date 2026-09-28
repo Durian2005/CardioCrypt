@@ -15,6 +15,7 @@ import sys
 import time
 import json
 import random
+import secrets
 import logging
 import threading
 import numpy as np
@@ -240,9 +241,56 @@ except ImportError as e:
     HEART_RATE_SERVICE = "0000180d-0000-1000-8000-00805f9b34fb"
     HEART_RATE_CHARACTERISTIC = "00002a37-0000-1000-8000-00805f9b34fb"
 
+# 会话密钥
+#
+# 原先未设置 FLASK_SECRET_KEY 时用 os.urandom(24) 兜底：密钥只存在于当前进程，
+# 于是「多 worker 部署」时各进程密钥互不相同 —— Flask 的 session 是签名 cookie，
+# 换个 worker 校验就失败，表现为用户登录状态随机丢失，且排查起来毫无线索。
+#
+# 改为「环境变量优先，缺省时持久化到本地文件」：既保持开箱即用，
+# 又让同一份部署的所有进程读到同一个密钥。该文件已在 .gitignore 中忽略。
+def _load_or_create_secret_key():
+    """返回 (密钥, 是否来自本地文件)。"""
+    env_key = os.environ.get('FLASK_SECRET_KEY')
+    if env_key:
+        return env_key, False
+
+    key_file = os.path.join(base_dir, '.flask_secret_key')
+    try:
+        if os.path.exists(key_file):
+            with open(key_file, 'r', encoding='utf-8') as f:
+                stored = f.read().strip()
+            if stored:
+                return stored, True
+
+        generated = secrets.token_hex(32)
+        with open(key_file, 'w', encoding='utf-8') as f:
+            f.write(generated)
+        try:
+            os.chmod(key_file, 0o600)  # Windows 上不生效，POSIX 下收紧到仅属主可读
+        except OSError:
+            pass
+        return generated, True
+    except OSError as e:
+        # 文件系统只读（如只读容器）时的退路，但必须让使用者知道后果
+        logger.warning(
+            "无法读写会话密钥文件（%s）；本次使用进程内随机密钥，"
+            "多进程部署会导致登录状态随机失效。请显式设置 FLASK_SECRET_KEY。", e
+        )
+        return secrets.token_hex(32), False
+
+
 # 创建Flask应用
 app = Flask(__name__)
-app.secret_key = os.environ.get("FLASK_SECRET_KEY") or os.urandom(24)
+
+_secret_key, _secret_from_file = _load_or_create_secret_key()
+app.secret_key = _secret_key
+if _secret_from_file:
+    logger.warning(
+        "未设置 FLASK_SECRET_KEY，已使用本地持久化密钥（web_auth/.flask_secret_key）。"
+        "该文件保证同一部署内多进程密钥一致；生产环境建议显式配置该环境变量。"
+    )
+
 app.config["MONGO_URI"] = os.environ.get(
     "MONGO_URI", "mongodb://localhost:27017/ecg_auth_db"
 )

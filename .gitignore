@@ -137,6 +137,9 @@ logs/
 output/
 web_auth/output/
 
+# 会话密钥（FLASK_SECRET_KEY 未设置时自动生成并持久化于此，绝不能入库）
+web_auth/.flask_secret_key
+
 # ===== AI / 编辑器本地状态 =====
 .workbuddy/
 .cursor/
