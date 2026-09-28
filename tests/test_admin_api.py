@@ -108,18 +108,23 @@ class TestAdminUsersApi:
         `model_path` 在库里存的是绝对路径；接口必须只回传文件名。
 
         字段名保留（前端表格在渲染它），但值不得含部署机器的目录结构。
+
+        路径刻意用**合成**的：这个用例的职责就是防止目录结构外泄，
+        若拿开发机的真实路径去喂它，用例本身就变成了泄漏源。
         """
+        fake_path = 'D:/srv/host-only/cardiocrypt/models/path_probe.pth'
         db.users.insert_one({
             'username': 'path_probe',
             'created_at': None,
-            'model_path': 'C:/Users/durian/Desktop/2.0/web_auth/models/path_probe.pth',
+            'model_path': fake_path,
         })
         _admin_login(client, csrf_token, admin_client_flask_app)
 
-        raw = client.get('/api/admin/users').get_data(as_text=True)
-        assert 'C:/Users' not in raw
-        assert 'durian' not in raw
+        resp = client.get('/api/admin/users')
+        raw = resp.get_data(as_text=True)
+        assert 'D:/srv' not in raw
+        assert 'host-only' not in raw
 
-        payload = client.get('/api/admin/users').get_json()
-        entry = next(u for u in payload['users'] if u['username'] == 'path_probe')
+        entry = next(u for u in resp.get_json()['users']
+                     if u['username'] == 'path_probe')
         assert entry['model_path'] == 'path_probe.pth'
