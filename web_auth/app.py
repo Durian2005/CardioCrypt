@@ -2754,7 +2754,11 @@ def generate_emotion_trend():
 # 路由: 退出登录
 @app.route('/logout')
 def logout():
+    # 与 /api/logout_json 保持一致：除了已认证身份，登录中的「待认证」状态
+    # 也要一起清掉。否则登出后仍能回到 /verify 页面（该页面只检查 pending_login），
+    # 留下一段谁也不该看到的状态。
     session.pop('username', None)
+    session.pop('pending_login', None)
     return redirect(url_for('index'))
 
 # API: 获取仪表盘模拟数据
