@@ -99,10 +99,14 @@ def register_spa(app, mongo, admin_required):
             )
             for doc in cursor:
                 created = doc.get('created_at')
+                # 只回传模型「文件名」而非数据库里存的绝对路径：
+                # 后台表格仅需展示"该用户是否已有模型"，而绝对路径会暴露
+                # 部署机器的目录结构与用户名。字段名保持不变以兼容现有前端。
+                raw_model_path = doc.get('model_path')
                 users.append({
                     'username': doc.get('username', ''),
                     'created_at': created.isoformat() if hasattr(created, 'isoformat') else (str(created) if created else None),
-                    'model_path': doc.get('model_path'),
+                    'model_path': os.path.basename(raw_model_path) if raw_model_path else None,
                 })
             users.sort(key=lambda u: u['username'])
             return jsonify({'success': True, 'users': users})
