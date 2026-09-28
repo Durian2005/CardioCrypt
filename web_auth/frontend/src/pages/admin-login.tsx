@@ -8,6 +8,7 @@ import { Input, Label } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { FadeUp, Magnetic, StaggerGroup, StaggerItem } from '@/components/motion'
 import { useSession } from '@/components/session-provider'
+import { postFormRaw } from '@/lib/api'
 
 /**
  * 管理员登录
@@ -31,16 +32,10 @@ export default function AdminLoginPage() {
 
     setSubmitting(true)
     try {
-      const body = new URLSearchParams({
+      // 走统一封装：自动附带 CSRF 令牌
+      const res = await postFormRaw('/manage/login', {
         username: username.trim(),
         password,
-      })
-      const res = await fetch('/manage/login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-        redirect: 'follow',
       })
 
       const finalUrl = new URL(res.url, window.location.origin)

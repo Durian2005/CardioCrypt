@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input, Label } from '@/components/ui/input'
 import { FadeUp, StaggerGroup, StaggerItem } from '@/components/motion'
 import { EcgWave } from '@/components/visuals/ecg-wave'
+import { postFormRaw } from '@/lib/api'
 
 /**
  * 登录页
@@ -31,14 +32,8 @@ export default function LoginPage() {
 
     setSubmitting(true)
     try {
-      const body = new URLSearchParams({ username: name })
-      const res = await fetch('/login', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: body.toString(),
-        redirect: 'follow',
-      })
+      // 走统一封装：自动附带 CSRF 令牌
+      const res = await postFormRaw('/login', { username: name })
 
       const finalUrl = new URL(res.url, window.location.origin)
       const path = finalUrl.pathname
