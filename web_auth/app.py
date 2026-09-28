@@ -44,10 +44,32 @@ models_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'models')
 os.makedirs(models_dir, exist_ok=True)
 
 # 配置日志
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+# 级别由 LOG_LEVEL 环境变量控制，默认 INFO。
+# 不再写死 DEBUG：DEBUG 会连带打印请求体、第三方库内部状态等敏感内容，
+# 只应在本机排障时临时开启，例如：LOG_LEVEL=DEBUG
+_LOG_LEVEL_NAME = os.environ.get('LOG_LEVEL', 'INFO').strip().upper()
+_LOG_LEVEL = getattr(logging, _LOG_LEVEL_NAME, None)
+if not isinstance(_LOG_LEVEL, int):
+    _LOG_LEVEL = logging.INFO
+    _LOG_LEVEL_NAME = 'INFO'
+
+_LOG_FORMAT = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+
+# 控制台输出始终保留；设置 LOG_FILE 时额外写入文件并自动轮转。
+# 相对路径按 web_auth/logs/ 解析（该目录已加入 .gitignore）。
+_log_handlers = [logging.StreamHandler()]
+_log_file = os.environ.get('LOG_FILE', '').strip()
+if _log_file:
+    if not os.path.isabs(_log_file):
+        _log_file = os.path.join(logs_dir, _log_file)
+    from logging.handlers import RotatingFileHandler
+    _log_handlers.append(
+        RotatingFileHandler(
+            _log_file, maxBytes=5 * 1024 * 1024, backupCount=3, encoding='utf-8'
+        )
+    )
+
+logging.basicConfig(level=_LOG_LEVEL, format=_LOG_FORMAT, handlers=_log_handlers, force=True)
 
 logger = logging.getLogger('web_auth')
 
