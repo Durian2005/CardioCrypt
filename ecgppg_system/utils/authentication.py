@@ -2,8 +2,34 @@
 # -*- coding: utf-8 -*-
 
 """
-身份验证模块
-基于生物信号（ECG/PPG）的身份验证功能
+身份验证模块（已废弃 · 保留供参考，请勿在新代码中调用）
+=========================================================================
+
+本模块是项目早期原型中的认证实现，**当前已无任何生产调用方**：
+
+* 应用实际使用的是 :mod:`model_example.authentication`
+  —— ``web_auth`` 只从那里导入 ``authenticate_single_signal``。
+* 本模块的 ``Authenticator`` / ``compute_signal_similarity`` /
+  ``verify_model_prediction`` 在仓库内仅有自引用；唯一的例外是
+  ``tests/test_authentication.py``，而它**刻意**导入本模块，是为了把下面两处
+  缺陷固定成回归测试（characterization test），并不代表本模块可用。
+
+已知缺陷（已由测试固化，见 ``tests/test_authentication.py::TestKnownLimitations``）：
+
+1. ``Authenticator.__init__`` 会构造 ``SignalPlotter``，后者依赖
+   ``settings.DPI`` / ``settings.FIGURE_WIDTH`` / ``settings.FIGURE_HEIGHT``，
+   而这三个配置项在当前 ``ecgppg_system.config.settings`` 中并不存在 ——
+   因此 ``Authenticator(...)`` 一构造就抛 ``AttributeError``。
+2. ``compute_signal_similarity(..., method='dtw')`` 走 ``fastdtw`` 0.3.4，
+   它会把标量喂给 scipy ≥ 1.16 的 ``scipy.spatial.distance.euclidean``，
+   触发 ``Input vector should be 1-D``，随后被函数内部 ``except`` 吞掉，
+   最终**静默返回 0.0**（``method='all'`` 时同样被拖低）。
+
+保留而不删除的原因：这是项目原始贡献者提交的实现，删除会抹去他人的代码与
+历史；标注废弃可以让后来者少踩一遍同样的坑。
+
+若确需恢复使用，请先修掉上述两点，再把调用方从
+``model_example.authentication`` 迁回本模块。
 """
 
 import os
