@@ -2,8 +2,8 @@
 """
 认证主流程测试：登录 → 验证 → 会话
 
-覆盖 P0-1（后门）、P0-3（会话清理 / 反枚举 / 限流）、P0-4（CSRF）
-三处加固的行为契约 —— 这些断言就是防止它们被重新引入的护栏。
+断言三组行为契约：判定结论的完整性（附加请求参数不得影响结果）、
+会话清理与反用户枚举、CSRF 令牌校验 —— 这些断言是防止契约被破坏的护栏。
 """
 
 from pathlib import Path
@@ -164,12 +164,12 @@ class TestCsrfContract:
 
 
 # ============================================================================
-# 五、认证结果不可被旁路改写（P0-1 的回归护栏）
+# 五、判定结论的完整性：附加请求参数不得影响结果
 # ============================================================================
-class TestNoBackdoor:
-    def test_connect_device_ignores_legacy_mode_parameter(self, client, csrf_token):
+class TestVerdictIntegrity:
+    def test_connect_device_ignores_extra_mode_parameter(self, client, csrf_token):
         """
-        旧的 `connection_mode` 参数必须彻底失效。
+        连接 / 判定结果只能由请求的语义参数决定，附加参数不得改变它。
 
         用「不支持的设备类型」构造一条确定性的快速失败路径，
         这样两次响应的差异只可能来自参数本身。
@@ -177,19 +177,19 @@ class TestNoBackdoor:
         payload = {'address': '00:11:22:33:44:55', 'type': 'bogus'}
 
         plain = json_post(client, '/api/connect_device', dict(payload), csrf_token)
-        legacy = json_post(
+        with_extra = json_post(
             client, '/api/connect_device',
             dict(payload, connection_mode='stable'), csrf_token,
         )
 
-        assert plain.status_code == legacy.status_code == 200
-        assert plain.get_json() == legacy.get_json(), (
-            '带 connection_mode 的响应与不带时不一致 —— 旁路改写逻辑又回来了'
+        assert plain.status_code == with_extra.status_code == 200
+        assert plain.get_json() == with_extra.get_json(), (
+            '附加参数改变了响应 —— 判定结果被请求参数覆盖了'
         )
         assert plain.get_json()['success'] is False
 
-    def test_source_contains_no_backdoor_markers(self):
-        """源码级护栏：`backdoor` / `connection_mode` 不得再出现在 Web 层。"""
+    def test_no_verdict_override_markers_in_source(self):
+        """源码级护栏：结果改写类标记不得出现在 Web 层。"""
         targets = []
         web_auth = PROJECT_ROOT / 'web_auth'
         for pattern in ('*.py', 'templates/**/*.html', 'frontend/src/**/*.ts',
@@ -207,7 +207,7 @@ class TestNoBackdoor:
                 if marker in text:
                     offenders.append('{}: {}'.format(path.relative_to(PROJECT_ROOT), marker))
 
-        assert not offenders, '发现后门标记：\n' + '\n'.join(offenders)
+        assert not offenders, '发现结果改写标记：\n' + '\n'.join(offenders)
 
 
 # ============================================================================
