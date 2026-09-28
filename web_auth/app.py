@@ -237,7 +237,20 @@ def now_filter():
 app.jinja_env.globals['now'] = now_filter
 
 # 初始化MongoDB
-mongo = PyMongo(app)
+#
+# PyMongo 默认的 serverSelectionTimeoutMS 是 30 秒。由于启动期会建索引
+# （见下方 init_system 的模块级调用），数据库不可达时会让进程启动白等 30 秒，
+# 多 worker 部署下这个代价会被放大。这里给一个更适合本机/内网的默认值。
+# 注意：若 MONGO_URI 中已显式指定超时选项，以 URI 为准（PyMongo 既有规则）。
+try:
+    _MONGO_SELECTION_TIMEOUT_MS = int(
+        os.environ.get('MONGO_SERVER_SELECTION_TIMEOUT_MS', '5000')
+    )
+except ValueError:
+    logger.warning("MONGO_SERVER_SELECTION_TIMEOUT_MS 不是合法整数，回退到 5000")
+    _MONGO_SELECTION_TIMEOUT_MS = 5000
+
+mongo = PyMongo(app, serverSelectionTimeoutMS=_MONGO_SELECTION_TIMEOUT_MS)
 
 # 全局变量
 current_registration_data = {}
@@ -448,6 +461,25 @@ def init_system():
     except Exception as e:
         logger.error(f"初始化系统组件失败: {e}")
         return False
+
+# --- 启动期初始化 -----------------------------------------------------------
+# 索引创建必须发生在「进程启动」阶段，而不能留在 __main__ 分支里。
+#
+# 原因：生产部署由 WSGI 服务器（gunicorn 等）导入本模块来获取 app，
+# 那时 `if __name__ == '__main__'` 内的代码根本不会执行 ——
+# 而 username 的 unique 索引正是当前防止用户名重复的唯一保障。
+#
+# 失败不阻断启动：数据库暂时不可达时应用仍应能起来，并给出明确告警。
+def _init_system_on_startup():
+    if init_system():
+        return
+    logger.warning(
+        "系统初始化未完成，索引可能尚未创建。请确认 MongoDB 可访问：%s",
+        app.config.get('MONGO_URI'),
+    )
+
+
+_init_system_on_startup()
 
 # 路由: 首页
 @app.route('/')
@@ -2835,8 +2867,8 @@ except Exception as _e:
 
 # 启动应用
 if __name__ == '__main__':
-    # 初始化系统
-    init_system()
+    # 注意：索引初始化已提前到模块加载阶段（见 _init_system_on_startup），
+    # 此处不再重复调用，避免开发模式下建两次索引。
 
     # 这里只用于本地开发。生产环境请改用 WSGI 服务器，例如：
     #   gunicorn -w 1 --threads 8 -b 127.0.0.1:5000 web_auth.app:app
