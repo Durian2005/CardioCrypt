@@ -248,6 +248,16 @@ app.config["MONGO_URI"] = os.environ.get(
 )
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(minutes=30)
 
+# 请求体大小上限：本应用只接收 JSON 信号数据与普通表单，16MB 足够宽裕。
+# 未设限时超大请求体会被整体读入内存，足以拖垮进程。
+try:
+    app.config['MAX_CONTENT_LENGTH'] = int(
+        os.environ.get('MAX_CONTENT_LENGTH', str(16 * 1024 * 1024))
+    )
+except ValueError:
+    logger.warning("MAX_CONTENT_LENGTH 不是合法整数，回退到 16MB")
+    app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+
 # 向Jinja2模板环境注册now函数
 @app.template_filter('now')
 def now_filter():
