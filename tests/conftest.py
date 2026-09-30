@@ -48,6 +48,9 @@ os.environ['STATE_CLEANUP_INTERVAL'] = '3600'
 # 默认走 classic：用例要断言端点的真实行为，不应依赖前端构建产物是否存在。
 # SPA 适配层注册的 JSON 接口与模式无关，test_spa.py 直接覆盖它们。
 os.environ['FRONTEND_MODE'] = 'classic'
+# 演示模式显式关闭：测试必须跑在「采集不到数据即判失败」的默认语义下。
+# test_demo_mode.py 用 monkeypatch 单独打开它来验证演示路径。
+os.environ['DEMO_MODE'] = '0'
 # 绘图模块在无显示环境下必须走 Agg，否则 import 阶段就会失败
 os.environ['MPLBACKEND'] = 'Agg'
 

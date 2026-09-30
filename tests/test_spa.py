@@ -18,13 +18,16 @@ class TestSessionApi:
     def test_projection_shape_for_anonymous(self, client):
         payload = response_json(client.get('/api/session'))
         assert set(payload) == {
-            'authenticated', 'username', 'isAdmin', 'pendingLogin', 'systemAvailable',
+            'authenticated', 'username', 'isAdmin', 'pendingLogin',
+            'systemAvailable', 'demoMode',
         }
         assert payload['authenticated'] is False
         assert payload['username'] is None
         assert payload['isAdmin'] is False
         assert payload['pendingLogin'] is None
         assert isinstance(payload['systemAvailable'], bool)
+        # 演示模式默认关闭 —— 这是「采集不到数据即判失败」的前提
+        assert payload['demoMode'] is False
 
     def test_reflects_pending_login(self, client, csrf_token, existing_user):
         client.post('/login', data={'username': existing_user, 'csrf_token': csrf_token})
