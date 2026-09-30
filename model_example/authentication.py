@@ -1,7 +1,20 @@
 """
 身份验证模块
 
-提供基于ECG和PPG信号的身份验证功能
+提供基于ECG和PPG信号的身份验证功能。
+
+关于返回值的约定
+------------------------------------------------------------------
+两个认证函数的返回值都带有 ``status`` 字段，用来区分「判定为不通过」与
+「这次根本没算出来」这两种完全不同的情况：
+
+  ``status == 'ok'``     推理正常完成，``authenticated`` / ``score`` 可信；
+  ``status == 'error'``  推理过程抛出异常，``score`` 固定为 0.0 —— 它**不代表**
+                         相似度为零，只代表本次没有产出有效分数。
+
+调用方若不看 ``status``，会在模型加载失败、输入维度异常等情况下把
+「系统故障」读成「用户不是本人」—— 两者对用户的说法、对运维的含义都不一样。
+``error`` 字段保留异常摘要供日志排查，不要直接回显给终端用户。
 """
 
 import torch
@@ -100,6 +113,7 @@ def authenticate_single_signal(model: nn.Module,
             
             # 构建结果字典
             result = {
+                'status': 'ok',
                 'authenticated': bool(authenticated),
                 'score': float(score),
                 'threshold': float(threshold),
@@ -166,8 +180,12 @@ def authenticate_single_signal(model: nn.Module,
             return result
     
     except Exception as e:
+        # 这里返回 score=0.0 是刻意 fail-closed：故障时一律不放行。
+        # 但必须用 status 把「故障」与「真的判为不通过」区分开 ——
+        # 否则调用方只能看到一个 0 分，分不清是模型坏了还是没比中。
         logger.error(f"身份验证过程中出错: {str(e)}")
         return {
+            'status': 'error',
             'authenticated': False,
             'score': 0.0,
             'threshold': float(threshold),
@@ -225,10 +243,17 @@ def authenticate_dual_signals(ecg_model: nn.Module,
             authenticated = combined_score >= combined_threshold
             
         elif fusion_method == 'majority':
-            # 多数投票
-            authenticated = (ecg_result['authenticated'] and ppg_result['authenticated'])
-            combined_score = (ecg_result['score'] + ppg_result['score']) / 2
-            combined_threshold = (ecg_threshold + ppg_threshold) / 2
+            # 多数投票。只有两路信号时「多数」就等于「两者都通过」，判定与 'and' 同义。
+            #
+            # 综合分必须与判定同口径：旧实现用两路分数的**平均**做综合分，
+            # 却拿**逻辑与**做判定，于是会出现 combined_score >= combined_threshold
+            # 而 authenticated 仍为 False 的矛盾结果 —— 结论和分数互相打架，
+            # 是最难排查的一类问题。改为取 min / max 后，
+            # 「综合分过线」成为「两路都过线」的充分条件：口径统一且偏保守，
+            # 宁可更严，不可更松。
+            combined_score = min(ecg_result['score'], ppg_result['score'])
+            combined_threshold = max(ecg_threshold, ppg_threshold)
+            authenticated = combined_score >= combined_threshold
             
         elif fusion_method == 'and':
             # 逻辑与
@@ -248,8 +273,16 @@ def authenticate_dual_signals(ecg_model: nn.Module,
             combined_threshold = ecg_threshold * 0.6 + ppg_threshold * 0.4
             authenticated = combined_score >= combined_threshold
         
+        # 任一路推理失败时，整体不能对外宣称「正常完成」——
+        # 分数虽然拼得出来，但有一半输入根本没算过。
+        child_failed = any(
+            isinstance(child, dict) and child.get('status') == 'error'
+            for child in (ecg_result, ppg_result)
+        )
+
         # 构建结果
         result = {
+            'status': 'error' if child_failed else 'ok',
             'authenticated': bool(authenticated),
             'combined_score': float(combined_score),
             'combined_threshold': float(combined_threshold),
@@ -343,6 +376,7 @@ def authenticate_dual_signals(ecg_model: nn.Module,
     except Exception as e:
         logger.error(f"双信号融合身份验证过程中出错: {str(e)}")
         return {
+            'status': 'error',
             'authenticated': False,
             'combined_score': 0.0,
             'combined_threshold': 0.0,
@@ -351,6 +385,73 @@ def authenticate_dual_signals(ecg_model: nn.Module,
             'fusion_method': fusion_method,
             'error': str(e)
         }
+
+def _equal_error_rate(scores: np.ndarray, labels: np.ndarray) -> float:
+    """
+    计算等错误率（EER, Equal Error Rate）。
+
+    EER 与下面 ``calculate_authentication_metrics`` 里那对 far / frr 有本质区别：
+    后者是**当前阈值下**的两个错误率，换个阈值就变；EER 则是 ROC 曲线上的固有
+    属性，描述「FAR 恰好等于 FRR」时那个点的错误率，与传入阈值无关。
+
+    做法：把所有候选分割点扫一遍，找到 FAR - FRR 变号的位置，再在相邻两点间
+    线性插值。复杂度 O(n log n)，不构造 n×阈值 的大矩阵。
+
+    常见误写是把 ``(far + frr) / 2`` 当作 EER —— 那只是某个阈值下的平均错误率，
+    无论模型区分度好还是差，都会明显偏离真实的 EER。
+
+    Args:
+        scores: 身份匹配分数（本项目模型输出落在 0~1）
+        labels: 真实标签，1 表示同一身份（genuine），0 表示不同身份（impostor）
+
+    Returns:
+        float: EER；当样本中缺少 genuine 或 impostor 任一类时返回 ``nan`` ——
+            此时 ROC 曲线不完整，EER 无定义，编不出一个诚实的数字。
+    """
+    scores = np.asarray(scores, dtype=np.float64).ravel()
+    labels = np.asarray(labels).ravel()
+    is_genuine = labels == 1
+
+    n_pos = int(np.count_nonzero(is_genuine))
+    n_neg = int(scores.size - n_pos)
+    if n_pos == 0 or n_neg == 0:
+        return float('nan')
+
+    # 按分数**降序**排列：这样「取前 i 个判为匹配」才等价于「把阈值设在第 i 与
+    # 第 i+1 个分数之间」。若按升序，前 i 个会是最低分的样本，方向正好反了。
+    order = np.argsort(-scores, kind='mergesort')
+    sorted_genuine = is_genuine[order]
+
+    tp = np.cumsum(sorted_genuine, dtype=np.float64)
+    accepted = np.arange(1, scores.size + 1, dtype=np.float64)
+    fp = accepted - tp
+    fn = float(n_pos) - tp
+
+    # 补上 i = 0：阈值高于所有分数，全部判为不匹配
+    far = np.concatenate(([0.0], fp / n_neg))
+    frr = np.concatenate(([1.0], fn / float(n_pos)))
+    diff = far - frr
+
+    crossing = np.flatnonzero(diff >= 0)
+    if crossing.size == 0:
+        # 理论上到不了这里：i = 0 时 diff = -1，i = n 时 diff = +1，必然变号。
+        # 留作数值异常的兜底 —— 退化为取最接近相等的那一点。
+        k = int(np.argmin(np.abs(diff)))
+        return float((far[k] + frr[k]) / 2.0)
+
+    k = int(crossing[0])
+    if k == 0:
+        return float((far[0] + frr[0]) / 2.0)
+
+    d0, d1 = float(diff[k - 1]), float(diff[k])
+    if d1 <= d0:
+        return float((far[k] + frr[k]) / 2.0)
+
+    weight = -d0 / (d1 - d0)                      # 落在 [0, 1]
+    far_at_cross = float(far[k - 1] + weight * (far[k] - far[k - 1]))
+    frr_at_cross = float(frr[k - 1] + weight * (frr[k] - frr[k - 1]))
+    return (far_at_cross + frr_at_cross) / 2.0
+
 
 def calculate_authentication_metrics(predictions: np.ndarray, 
                                     ground_truth: np.ndarray, 
@@ -364,7 +465,9 @@ def calculate_authentication_metrics(predictions: np.ndarray,
         threshold: 身份验证阈值
         
     Returns:
-        Dict[str, float]: 性能指标
+        Dict[str, float]: 性能指标。``accuracy`` ~ ``frr`` 依赖传入的 ``threshold``；
+            ``eer`` 不依赖它 —— EER 刻画的是整条 ROC 曲线，在样本缺少任一类时
+            为 ``nan``。
     """
     # 转换预测为二元决策
     binary_preds = predictions >= threshold
@@ -405,8 +508,10 @@ def calculate_authentication_metrics(predictions: np.ndarray,
     # 错误拒绝率 (FRR)：匹配样本被错误拒绝的比例
     frr = fn / (fn + tp + 1e-10)
     
-    # 相等错误率 (EER) - 近似计算
-    eer = (far + frr) / 2
+    # 相等错误率 (EER)：由全体分数分布算出，与当前 threshold 无关。
+    # 它并不等于上面那对 far / frr 的平均值 —— 那是「当前阈值下的平均错误率」，
+    # 换个阈值就变，而 EER 不会。
+    eer = _equal_error_rate(predictions, ground_truth)
     
     return {
         'accuracy': float(accuracy),
