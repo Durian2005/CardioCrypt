@@ -30,6 +30,14 @@
     {% block extra_css %}{% endblock %}
 </head>
 <body>
+    {# 演示模式提示条：采集可能改用合成数据，必须显著标注 #}
+    {% if demo_mode %}
+    <div class="alert alert-warning rounded-0 mb-0 text-center small" role="alert">
+        <i class="fas fa-triangle-exclamation me-1"></i>
+        <strong>演示模式已开启</strong> ——
+        采集不到真实设备信号时会改用合成数据，本页结果不代表真实生物特征比对。
+    </div>
+    {% endif %}
     <div class="container-fluid">
         <div class="row">
             <!-- 侧边导航栏 -->

@@ -7,19 +7,23 @@ interface SessionCtx {
   refresh: () => Promise<void>
 }
 
+/** 未登录 / 请求失败时的默认投影。demoMode 保守取 false（不误报演示态）。 */
+const DEFAULT_SESSION: SessionInfo = {
+  authenticated: false,
+  username: null,
+  isAdmin: false,
+  pendingLogin: null,
+  demoMode: false,
+}
+
 const Ctx = React.createContext<SessionCtx>({
-  info: { authenticated: false, username: null, isAdmin: false, pendingLogin: null },
+  info: DEFAULT_SESSION,
   loading: true,
   refresh: async () => {},
 })
 
 export function SessionProvider({ children }: { children: React.ReactNode }) {
-  const [info, setInfo] = React.useState<SessionInfo>({
-    authenticated: false,
-    username: null,
-    isAdmin: false,
-    pendingLogin: null,
-  })
+  const [info, setInfo] = React.useState<SessionInfo>(DEFAULT_SESSION)
   const [loading, setLoading] = React.useState(true)
 
   const refresh = React.useCallback(async () => {
@@ -27,12 +31,7 @@ export function SessionProvider({ children }: { children: React.ReactNode }) {
       const data = await sessionApi.info()
       setInfo(data)
     } catch {
-      setInfo({
-        authenticated: false,
-        username: null,
-        isAdmin: false,
-        pendingLogin: null,
-      })
+      setInfo(DEFAULT_SESSION)
     } finally {
       setLoading(false)
     }

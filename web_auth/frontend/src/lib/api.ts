@@ -154,6 +154,10 @@ export interface SessionInfo {
   username: string | null
   isAdmin: boolean
   pendingLogin: string | null
+  /** 算法层是否可用；不可用时验证无法进行 */
+  systemAvailable?: boolean
+  /** 演示模式：开启时采集不到真实信号会改用合成数据，界面需显著提示 */
+  demoMode?: boolean
 }
 
 export const session = {
@@ -229,6 +233,10 @@ export const verification = {
       status: 'verifying' | 'completed' | 'failed'
       redirect?: string
       error?: string
+      /** 判定未通过时的原因（未采集到数据 / 模型不可用 / 算法层不可用等） */
+      reason?: string
+      /** 本次结果基于合成信号（演示模式），需向用户明示 */
+      demo?: boolean
     }>('/api/verification_status'),
 }
 

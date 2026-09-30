@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  AlertTriangle,
   Bluetooth,
   Cable,
   CheckCircle2,
@@ -30,7 +31,10 @@ type Phase = 'scan' | 'verifying' | 'success' | 'failed'
 
 export default function VerifyPage() {
   const navigate = useNavigate()
-  const { refresh } = useSession()
+  const { info, refresh } = useSession()
+
+  /** 后端开启演示模式时，本次采集可能改用合成数据 —— 必须显式告知用户 */
+  const demoMode = info.demoMode === true
 
   const [phase, setPhase] = useState<Phase>('scan')
   const [deviceType, setDeviceType] = useState<'all' | 'ble' | 'serial'>('all')
@@ -38,6 +42,10 @@ export default function VerifyPage() {
   const [devices, setDevices] = useState<DeviceItem[]>([])
   const [activeName, setActiveName] = useState('')
   const [statusText, setStatusText] = useState('正在比对心电特征…')
+  /** 本次判定是否基于合成信号（由后端在结果里带回来） */
+  const [demoResult, setDemoResult] = useState(false)
+  /** 判定未通过时的具体原因（未采集到数据 / 模型不可用 / 算法层不可用） */
+  const [failReason, setFailReason] = useState<string | null>(null)
 
   const pollRef = useRef<number | null>(null)
 
@@ -118,12 +126,14 @@ export default function VerifyPage() {
         if (res.status === 'completed') {
           stopPoll()
           setPhase('success')
+          setDemoResult(res.demo === true)
           await refresh()
           toast.success('身份验证通过')
           setTimeout(() => navigate('/dashboard'), 1500)
         } else if (res.status === 'failed') {
           stopPoll()
           setPhase('failed')
+          setFailReason(res.reason ?? null)
           toast.error('身份验证未通过')
         } else {
           setStatusText('正在比对心电特征…')
@@ -138,10 +148,34 @@ export default function VerifyPage() {
     setPhase('scan')
     setDevices([])
     setActiveName('')
+    setDemoResult(false)
+    setFailReason(null)
   }
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-14 sm:px-6">
+      {/* 演示模式：在流程开始前就告知，避免把合成数据的结果当成真实比对 */}
+      {demoMode && (
+        <FadeUp>
+          <div
+            role="alert"
+            className="mb-8 flex items-start gap-3 rounded-[var(--radius-md)] border border-amber-500/45 bg-amber-500/10 p-4"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <div className="text-sm leading-relaxed">
+              <p className="font-medium text-amber-500">演示模式已开启</p>
+              <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+                采集不到真实设备信号时，系统会改用合成数据完成流程。此模式下的判定结果
+                <span className="font-medium text-amber-500">
+                  不代表真实生物特征比对
+                </span>
+                ，仅用于功能演示。
+              </p>
+            </div>
+          </div>
+        </FadeUp>
+      )}
+
       <FadeUp>
         <header className="mb-10 text-center">
           <Badge variant="default" className="mb-4">
@@ -222,6 +256,24 @@ export default function VerifyPage() {
                       </>
                     )}
                   </Button>
+
+                  {/* 演示模式专用入口：跳过设备扫描与连接，直接发起验证。
+                      后端在演示模式下会以合成信号补足，且结果带 demo 标记。 */}
+                  {demoMode && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="mt-3 w-full border-amber-500/45 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
+                      onClick={() => {
+                        setActiveName('演示模式 · 合成信号')
+                        setPhase('verifying')
+                        startPoll()
+                      }}
+                    >
+                      <AlertTriangle className="size-5" />
+                      演示模式：跳过设备，使用合成数据
+                    </Button>
+                  )}
 
                   {scanning && (
                     <div className="mt-6 space-y-2.5">
@@ -344,8 +396,16 @@ export default function VerifyPage() {
                     身份验证通过
                   </h2>
                   <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
-                    心电特征匹配成功，正在进入仪表盘…
+                    {demoResult
+                      ? '本次为演示模式：判定基于合成数据，非真实采集。'
+                      : '心电特征匹配成功，正在进入仪表盘…'}
                   </p>
+                  {demoResult && (
+                    <p className="mt-2 flex items-center gap-1.5 text-xs text-amber-500">
+                      <AlertTriangle className="size-3.5" />
+                      结果不代表真实生物特征比对
+                    </p>
+                  )}
                   <Loader2 className="mt-7 size-5 animate-spin text-[hsl(var(--muted-foreground))]" />
                 </CardContent>
               </Card>
@@ -367,7 +427,8 @@ export default function VerifyPage() {
                     验证未通过
                   </h2>
                   <p className="mt-2 max-w-sm text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
-                    信号与注册模型不匹配。请确认佩戴位置正确、保持静止后重试。
+                    {failReason ??
+                      '信号与注册模型不匹配。请确认佩戴位置正确、保持静止后重试。'}
                   </p>
                   <div className="mt-8 flex flex-wrap justify-center gap-3">
                     <Button variant="brand" size="lg" onClick={retry}>

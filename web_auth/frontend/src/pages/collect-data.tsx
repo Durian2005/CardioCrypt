@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
+  AlertTriangle,
   Bluetooth,
   Cable,
   CheckCircle2,
@@ -22,6 +23,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { FadeUp } from '@/components/motion'
 import { EcgWave } from '@/components/visuals/ecg-wave'
 import { device, registration, type DeviceItem } from '@/lib/api'
+import { useSession } from '@/components/session-provider'
 import { cn } from '@/lib/utils'
 
 /* ---------------- 步骤定义 ---------------- */
@@ -40,6 +42,10 @@ type StepKey = (typeof STEPS)[number]['key']
 export default function CollectDataPage() {
   const { username = '' } = useParams()
   const navigate = useNavigate()
+  const { info } = useSession()
+
+  /** 后端开启演示模式时，采集可能改用合成数据 —— 必须显式告知用户 */
+  const demoMode = info.demoMode === true
 
   const [step, setStep] = useState<StepKey>('scan')
   const [deviceType, setDeviceType] = useState<'all' | 'ble' | 'serial'>('all')
@@ -51,6 +57,8 @@ export default function CollectDataPage() {
   const [progress, setProgress] = useState(0)
   const [collectStatus, setCollectStatus] = useState('准备开始数据采集…')
   const [finished, setFinished] = useState(false)
+  /** 本次注册是否基于合成数据（由后端在结果里带回来） */
+  const [demoResult, setDemoResult] = useState(false)
 
   const pollRef = useRef<number | null>(null)
 
@@ -163,16 +171,20 @@ export default function CollectDataPage() {
         if (state === 'completed') {
           setProgress(100)
           setCollectStatus('模型训练完成')
+          setDemoResult(s.demo === true)
           setStep('done')
           setFinished(true)
           setCollecting(false)
           if (pollRef.current) window.clearInterval(pollRef.current)
           toast.success('注册流程完成，可以开始使用了')
-        } else if (state === 'failed') {
-          setCollectStatus('采集或训练失败，请重试')
+        } else if (state === 'failed' || state === 'error') {
+          // 后端现在会为失败写明原因（未采到数据 / 算法层不可用 / 自检未过等），
+          // 有就照实显示，没有才退回通用文案。
+          const reason = String(s.error_message ?? '')
+          setCollectStatus(reason || '采集或训练失败，请重试')
           setCollecting(false)
           if (pollRef.current) window.clearInterval(pollRef.current)
-          toast.error('采集流程失败')
+          toast.error(reason || '采集流程失败')
         } else {
           setProgress((p) => Math.min(96, p + 4))
           setCollectStatus(
@@ -202,6 +214,28 @@ export default function CollectDataPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
+      {/* 演示模式：注册同样会降级为合成数据，须在流程开始前就说明 */}
+      {demoMode && (
+        <FadeUp>
+          <div
+            role="alert"
+            className="mb-8 flex items-start gap-3 rounded-[var(--radius-md)] border border-amber-500/45 bg-amber-500/10 p-4"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
+            <div className="text-sm leading-relaxed">
+              <p className="font-medium text-amber-500">演示模式已开启</p>
+              <p className="mt-1 text-[hsl(var(--muted-foreground))]">
+                采集不到真实设备信号时，系统会改用合成数据训练模型。以此注册的账户
+                <span className="font-medium text-amber-500">
+                  不具备真实生物特征依据
+                </span>
+                ，仅用于功能演示。
+              </p>
+            </div>
+          </div>
+        </FadeUp>
+      )}
+
       <FadeUp>
         <header className="mb-10 text-center">
           <Badge variant="accent" className="mb-4">
@@ -286,6 +320,23 @@ export default function CollectDataPage() {
                       </>
                     )}
                   </Button>
+
+                  {/* 演示模式专用入口：仅在后端开启该开关时出现。
+                      后端此时已放行设备检查，直接进入采集即可由合成数据补足。 */}
+                  {demoMode && (
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      className="mt-3 w-full border-amber-500/45 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
+                      onClick={() => {
+                        setStep('collect')
+                        void startCollect()
+                      }}
+                    >
+                      <AlertTriangle className="size-5" />
+                      演示模式：跳过设备，使用合成数据
+                    </Button>
+                  )}
 
                   {/* 扫描中骨架屏 */}
                   {scanning && (
@@ -414,6 +465,12 @@ export default function CollectDataPage() {
                     已为「{username}」建立心电特征模型。
                     现在可以前往登录页，通过心跳完成身份认证。
                   </p>
+                  {demoResult && (
+                    <p className="mt-3 flex items-center gap-1.5 text-xs text-amber-500">
+                      <AlertTriangle className="size-3.5" />
+                      本次模型基于合成数据训练，不具备真实生物特征依据
+                    </p>
+                  )}
                   <div className="mt-8 flex flex-wrap justify-center gap-3">
                     <Button
                       variant="brand"
