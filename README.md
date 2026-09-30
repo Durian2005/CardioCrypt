@@ -112,6 +112,7 @@ venv\Scripts\python.exe -m pytest
 | `tests/test_security.py` | 限流器边界与窗口滑动、CSRF 令牌的生成 / 轮换 / 会话绑定 |
 | `tests/test_auth_flow.py` | 登录 / 注册 / 登出流程、反用户枚举、会话固定防护、判定结论完整性 |
 | `tests/test_authentication.py` | 信号相似度的性质型断言，并固定两处已知缺陷 |
+| `tests/test_model_authentication.py` | 认证实现的判定契约：EER 不随阈值变化、推理失败与判定不通过可区分、融合结果内部自洽 |
 | `tests/test_admin_api.py` | 管理接口的权限边界、口令长度与限流、响应字段脱敏 |
 | `tests/test_spa.py` | SPA 适配层的会话投影、令牌下发、未知路径仍返回真 404 |
 
@@ -200,7 +201,7 @@ venv\Scripts\python.exe -m pytest
 | 贡献者 | 主要贡献 |
 |---|---|
 | [@Zzthird](https://github.com/Zzthird) | **项目原始原型**：设备接入（BLE 蓝牙 / 串口）、信号采集与预处理流水线、BiLSTM + Attention 模型训练与认证比对逻辑、MongoDB 存储层 |
-| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（78 例）；项目脱敏、文档与发布维护 |
+| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（95 例）；依赖清单治理、项目脱敏、文档与发布维护 |
 
 > 原始原型完成于 2025 年 8 月；前端重构、安全加固与工程整理完成于 2026 年 9 月。
 > 仓库保留了完整的开发提交历史，贡献者名单由提交作者自动统计。
