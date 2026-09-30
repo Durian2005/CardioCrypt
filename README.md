@@ -66,6 +66,9 @@
 
 ### 1. 环境准备
 
+需要 **Python 3.9.x**。依赖清单已锁定到该版本可安装的精确版本，并按用途分组；
+标 `sys_platform == "win32"` 的 `winrt-*` 系列是 Windows 上 BLE 的后端，其他平台会自动跳过。
+
 ```bash
 python -m venv venv
 venv\Scripts\activate          # Windows
@@ -73,6 +76,12 @@ pip install -r requirements.txt
 ```
 
 需要本地运行 **MongoDB**（默认 `mongodb://localhost:27017`）。
+
+如果要运行测试，改装 `requirements-dev.txt` —— 它通过 `-r` 引入运行时依赖，并额外提供 pytest：
+
+```bash
+pip install -r requirements-dev.txt
+```
 
 ### 2. 构建前端
 

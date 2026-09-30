@@ -1,0 +1,26 @@
+# CardioCrypt 开发与测试依赖
+#
+# 安装：
+#   venv\Scripts\python.exe -m pip install -r requirements-dev.txt      # Windows
+#   venv/bin/python -m pip install -r requirements-dev.txt              # Linux / macOS
+#
+# 本文件通过 -r 引入运行时依赖，因此装完即可同时运行应用与 pytest。
+
+-r requirements.txt
+
+# --- 测试 -----------------------------------------------------------------
+pytest==8.4.1
+iniconfig==2.1.0
+pluggy==1.6.0
+tomli==2.4.1                                # pytest 在 Python < 3.11 上需要
+exceptiongroup==1.3.1                       # pytest 在 Python < 3.11 上需要
+Pygments==2.21.0                            # pytest 的终端着色输出
+
+# --- 打包为可执行文件（可选，不参与日常运行与测试）-------------------------
+# 仅当需要把项目冻结成单文件可执行程序时才安装。
+# 注意：以下几项沿用自早期的打包尝试，未在 Python 3.9 上复验过，装之前请先确认版本可用。
+pyinstaller==6.15.0
+pyinstaller-hooks-contrib==2025.8
+altgraph==0.17.4
+pefile>=2022.5.30
+pywin32-ctypes==0.2.3
