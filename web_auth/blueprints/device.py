@@ -32,6 +32,11 @@ from web_auth.core import (
     train_model,
 )
 from web_auth.extensions import mongo
+from web_auth.demo import (
+    demo_degrade as _demo_degrade,
+    is_enabled as _demo_enabled,
+    synthetic_signal_series as _demo_signal_series,
+)
 from web_auth.services.signals import (
     generate_ecg_ppg_data,
     heart_rate_to_ecg,
@@ -310,7 +315,14 @@ def start_data_collection():
     # 检查设备类型
     device_type = device_info.get('type', 'ble') if device_info else 'ble'
     
-    if device_type == 'ble':
+    # 演示模式下允许「没有设备就注册」——否则无硬件时连流程入口都进不去，
+    # 采集线程里的降级逻辑也就无从生效。降级本身仍会逐条留痕（见 demo.py）。
+    if _demo_enabled():
+        logger.warning(
+            "[DEMO] 演示模式已开启：跳过设备连接检查，"
+            "本次注册将使用合成数据（type=%s）", device_type
+        )
+    elif device_type == 'ble':
         # 对于BLE设备，检查BLE客户端连接状态
         if not state.ble_device_client or not state.ble_device_client.is_connected:
             return jsonify({'success': False, 'error': 'BLE设备未连接，请先连接设备'})
@@ -328,6 +340,21 @@ def start_data_collection():
     
     # 定义数据采集线程函数
     def collect_data_thread(username, device_info):
+        # 本次注册中所有「采集降级」的原因，随结果一起透出给前端
+        demo_reasons = []
+        
+        def fail(reason, status='failed'):
+            """
+            把注册定格为失败并写明原因。
+            
+            注册失败意味着「没有生成任何模型」—— 这是与「注册成功但模型
+            不准确」完全不同的状态，必须让前端能区分出来。
+            """
+            with state.registration_lock:
+                state.current_registration_data[username]['status'] = status
+                state.current_registration_data[username]['error_message'] = reason
+            logger.error("注册中止：%s", reason)
+        
         try:
             # 获取全局函数引用
             
@@ -359,7 +386,9 @@ def start_data_collection():
                     
                     # 检查串口连接
                     if not EnvironmentManager.is_serial_data_fresh(max_age_seconds=5.0):
-                        logger.warning("串口设备未连接或未返回有效数据，使用模拟数据")
+                        if not _demo_degrade('串口设备未连接或未返回有效数据', demo_reasons):
+                            fail('未检测到串口设备数据，注册中止')
+                            return
                         use_simulated_data = True
                     else:
                         use_simulated_data = False
@@ -447,66 +476,36 @@ def start_data_collection():
                             collection_complete = True
                             collection_event.set()
                         else:
-                            # 没有采集到任何数据，使用模拟数据
-                            logger.warning(f"在指定时间内未采集到任何数据，使用模拟数据")
+                            if not _demo_degrade('串口在采集窗口内未返回任何数据', demo_reasons):
+                                fail('串口未采集到任何数据，注册中止')
+                                return
                             
-                            # 生成300个模拟数据点
-                            needed_count = 300  # 如果没有采集到真实数据，则生成300个模拟数据点
-                            for _ in range(needed_count):
-                                # 随机心率变化，模拟真实注册场景
-                                heart_rate = 70 + random.uniform(-10, 10)
-                                
-                                # 生成ECG数据
-                                ecg_data = heart_rate_to_ecg(heart_rate)
-                                
-                                # 添加到采集数据
-                                collected_data.append(ecg_data)
+                            needed_count = 300
+                            collected_data.extend(_demo_signal_series(needed_count))
                             
-                            logger.info(f"模拟数据生成完成，总数据点: {len(collected_data)}")
+                            logger.info(f"注册：[DEMO] 已生成 {needed_count} 个合成数据点")
                             collection_complete = True
                             collection_event.set()
                     else:
-                        # 完全使用模拟数据
-                        logger.warning(f"使用模拟数据为用户 {username} 采集数据")
+                        # 设备未就绪即进入演示分支（_demo_degrade 已确认演示模式开启）
+                        logger.warning("注册：[DEMO] 串口不可用，改用合成信号完成流程")
                         collection_complete = True
                         
-                        # 清空之前可能部分采集的数据
-                        collected_data = []
+                        collected_data = _demo_signal_series(60)
                         with state.registration_lock:
                             state.current_registration_data[username]['data'] = []
+                            state.current_registration_data[username]['heart_rates'] = []
                         
-                        # 生成60个模拟数据点
-                        for _ in range(60):
-                            # 随机心率变化，模拟真实注册场景
-                            heart_rate = 70 + random.uniform(-10, 10)
-                            
-                            # 生成ECG数据
-                            ecg_data = heart_rate_to_ecg(heart_rate)
-                            
-                            # 添加到采集数据
-                            collected_data.append(ecg_data)
-                            
-                            # 记录心率信息
-                            with state.registration_lock:
-                                # 添加到用户数据
-                                if 'heart_rates' not in state.current_registration_data[username]:
-                                    state.current_registration_data[username]['heart_rates'] = []
-                                state.current_registration_data[username]['heart_rates'].append(heart_rate)
-                        
-                        logger.info(f"已生成 {len(collected_data)} 个模拟ECG数据点")
+                        logger.info(f"注册：[DEMO] 已生成 {len(collected_data)} 个合成数据点")
                 except Exception as e:
-                    logger.error(f"串口设备数据采集失败: {str(e)}，使用模拟数据")
-                    # 使用模拟数据
+                    if not _demo_degrade('串口数据采集异常: %s' % e, demo_reasons):
+                        fail('串口数据采集失败，注册中止')
+                        return
+                    
                     collection_complete = True
-                    collected_data = []
+                    collected_data = _demo_signal_series(60)
                     
-                    # 生成60个模拟数据点
-                    for _ in range(60):
-                        heart_rate = 70 + random.uniform(-10, 10)
-                        ecg_data = heart_rate_to_ecg(heart_rate)
-                        collected_data.append(ecg_data)
-                    
-                    logger.info(f"已生成 {len(collected_data)} 个模拟ECG数据点")
+                    logger.info(f"注册：[DEMO] 已生成 {len(collected_data)} 个合成数据点")
             else:
                 # 使用BLE设备采集数据
                 # 添加事件状态检查函数，方便调试
@@ -595,7 +594,7 @@ def start_data_collection():
                         # 检查BLE设备是否可用
                         
                         if not state.ble_device_client or not state.ble_device_client.is_connected:
-                            logger.warning("BLE设备未连接或不可用，使用模拟数据")
+                            logger.warning("BLE 设备未连接或不可用，无法采集真实数据")
                             return (False, None)
                         
                         # 使用全局变量中的设备客户端
@@ -627,11 +626,11 @@ def start_data_collection():
                                     break
                         
                         if not hr_service_found:
-                            logger.warning("设备不支持心率服务，使用模拟数据")
+                            logger.warning("设备不支持心率服务，无法采集真实数据")
                             return (False, None)
                         
                         if not hr_char_uuid:
-                            logger.warning("未找到心率特征或特征不支持通知，使用模拟数据")
+                            logger.warning("未找到心率特征或特征不支持通知，无法采集真实数据")
                             return (False, None)
                         
                         # 直接使用device_client启用通知
@@ -651,7 +650,7 @@ def start_data_collection():
                             logger.debug(f"已成功启用设备心率特征通知")
                             notify_enabled = True
                         except Exception as notify_error:
-                            logger.warning(f"启用心率通知失败: {str(notify_error)}，使用模拟数据")
+                            logger.warning(f"启用心率通知失败: {str(notify_error)}，无法采集真实数据")
                             return (False, None)
                         
                         # 确保通知已启用标志被正确设置
@@ -667,7 +666,7 @@ def start_data_collection():
                             # 检查是否已经超时
                             elapsed_time = time.time() - start_time
                             if elapsed_time >= timeout:
-                                logger.warning(f"数据采集超时 ({timeout}秒)，切换到模拟数据")
+                                logger.warning(f"数据采集超时 ({timeout}秒)，未取到足够数据")
                                 break
                                 
                             # 检查连接状态
@@ -799,61 +798,34 @@ def start_data_collection():
                 # 设置一个标志，表示通知已停止，防止回调函数继续处理数据
                 notify_enabled = False
                 
-                # 如果从设备采集失败，使用模拟数据
+                # 如果从设备采集失败或数据量不足，默认判失败；
+                # 只有演示模式才允许用合成信号补齐（见 web_auth/demo.py）
                 if not success or not collected_data or len(collected_data) < 60:
                     # 如果有部分采集的数据但不足60点，则记录
                     partial_data_count = len(collected_data)
+                    reason = (
+                        'BLE 设备仅提供 %d 个数据点（需要 60 个）' % partial_data_count
+                        if partial_data_count > 0 else
+                        '未采集到任何 BLE 设备数据'
+                    )
                     
-                    logger.info(f"设备数据不足（获取到{partial_data_count}个点，需要60个点），使用模拟数据补充")
+                    if not _demo_degrade(reason, demo_reasons):
+                        fail('未采集到足够的设备数据，注册中止')
+                        return
                     
-                    # 如果需要补充数据
-                    if partial_data_count > 0 and partial_data_count < 60:
-                        needed_count = 60 - partial_data_count
-                        logger.info(f"已收集 {partial_data_count} 个设备数据点，需要生成 {needed_count} 个模拟数据点")
-                        
-                        # 生成补充模拟数据
-                        for _ in range(needed_count):
-                            # 随机心率变化，模拟真实注册场景
-                            heart_rate = 70 + random.uniform(-10, 10)
-                            rr_interval = 60000.0 / heart_rate  # 将心率转换为RR间隔（毫秒）
-                            
-                            # 生成ECG数据
-                            ecg_data = heart_rate_to_ecg(heart_rate)
-                            
-                            # 添加到采集数据
-                            collected_data.append(ecg_data)
-                            
-                        logger.info(f"模拟数据补充完成，总数据点: {len(collected_data)}")
+                    needed_count = max(0, 60 - partial_data_count)
+                    if partial_data_count > 0:
+                        logger.info(f"注册：[DEMO] 已收集 {partial_data_count} 个设备数据点，补齐 {needed_count} 个合成数据点")
+                        collected_data.extend(_demo_signal_series(needed_count))
                     else:
-                        # 完全使用模拟数据
-                        logger.info(f"使用模拟数据为用户 {username} 采集数据")
+                        logger.info("注册：[DEMO] 无设备数据，全部使用合成数据")
                         collection_complete = True
-                        
-                        # 清空之前可能部分采集的数据
-                        collected_data = []
+                        collected_data = _demo_signal_series(60)
                         with state.registration_lock:
                             state.current_registration_data[username]['data'] = []
-                        
-                        # 生成60个模拟数据点
-                        for _ in range(60):
-                            # 随机心率变化，模拟真实注册场景
-                            heart_rate = 70 + random.uniform(-10, 10)
-                            rr_interval = 60000.0 / heart_rate  # 将心率转换为RR间隔（毫秒）
-                            
-                            # 生成ECG数据
-                            ecg_data = heart_rate_to_ecg(heart_rate)
-                            
-                            # 添加到采集数据
-                            collected_data.append(ecg_data)
-                            
-                            # 记录心率信息
-                            with state.registration_lock:
-                                # 添加到用户数据
-                                if 'heart_rates' not in state.current_registration_data[username]:
-                                    state.current_registration_data[username]['heart_rates'] = []
-                                state.current_registration_data[username]['heart_rates'].append(heart_rate)
-                        
-                        logger.info(f"已生成 {len(collected_data)} 个模拟ECG数据点")
+                            state.current_registration_data[username]['heart_rates'] = []
+                    
+                    logger.info(f"注册：[DEMO] 合成数据准备完成，总数据点: {len(collected_data)}")
 
             # 处理采集到的数据
             with state.registration_lock:
@@ -1033,6 +1005,10 @@ def start_data_collection():
                         with state.registration_lock:
                             state.current_registration_data[username]['status'] = 'completed'
                             state.current_registration_data[username]['model_path'] = model_path
+                            if demo_reasons:
+                                # 采集阶段降级过：如实标记，前端据此提示「基于合成数据」
+                                state.current_registration_data[username]['demo'] = True
+                                state.current_registration_data[username]['demo_reasons'] = list(demo_reasons)
                         
                         # 保存用户到数据库
                         mongo.db.users.insert_one({
@@ -1043,49 +1019,28 @@ def start_data_collection():
                         
                         logger.info(f"用户 {username} 注册成功")
                     else:
-                        # 验证失败
-                        with state.registration_lock:
-                            state.current_registration_data[username]['status'] = 'failed'
-                        
-                        logger.warning(f"用户 {username} 验证失败")
+                        # 训练完成但自检未达标：不写入用户，如实报告
+                        logger.warning(f"用户 {username} 训练后自检未通过")
+                        fail(
+                            '训练后自检未通过（成功 {}/{} 次）'.format(
+                                verification_success, min_verification_success
+                            )
+                        )
                 
                 except Exception as e:
                     logger.error(f"模型训练/验证失败: {str(e)}")
-                    with state.registration_lock:
-                        state.current_registration_data[username]['status'] = 'error'
+                    fail('模型训练或验证失败: %s' % e, status='error')
             else:
-                # 如果系统不可用，使用模拟验证
-                with state.registration_lock:
-                    state.current_registration_data[username]['status'] = 'verifying'
-                
-                # 模拟验证
-                verification_success = 0
-                for i in range(3):
-                    with state.registration_lock:
-                        state.current_registration_data[username]['verification_count'] += 1
-                        state.current_registration_data[username]['verification_success'] += 1
-                        verification_success += 1
-                    time.sleep(2)
-                
-                # 模拟模型文件
-                model_filename = f"{username}_model.pth"
-                model_path = os.path.join(models_dir, model_filename)
-                with open(model_path, 'w') as f:
-                    f.write("模拟模型文件")
-                
-                # 更新注册状态
-                with state.registration_lock:
-                    state.current_registration_data[username]['status'] = 'completed'
-                    state.current_registration_data[username]['model_path'] = model_path
-                
-                # 保存用户到数据库
-                mongo.db.users.insert_one({
-                    'username': username,
-                    'model_path': model_path,
-                    'created_at': datetime.now()
-                })
-                
-                logger.info(f"用户 {username} 注册成功 (模拟模式)")
+                # 算法层不可用（导入失败）：训练模型的能力根本不存在。
+                #
+                # 这里原本会写一个内容为「模拟模型文件」的 .pth 占位文件，再把
+                # 用户写进数据库、报告「注册成功 (模拟模式)」—— 等于凭空造出一个
+                # 并不存在的「生物特征模型」，而后续验证会真的去加载它。
+                #
+                # 注意这与「用合成信号代替采集」不是一回事：后者替换的是**输入
+                # 数据**（模型照样要真跑），这里伪造的是**产物**（模型本身）。
+                # 因此不提供演示模式开关，一律中止。
+                fail('算法层不可用，无法训练身份模型，注册中止', status='error')
         
         except Exception as e:
             logger.error(f"数据采集线程错误: {e}")

@@ -31,6 +31,7 @@ from flask import Flask, flash, jsonify, redirect, request, session, url_for
 from web_auth import core, state
 from web_auth.config import (
     CSRF_ENABLED,
+    DEMO_MODE,
     FRONTEND_MODE,
     MAX_CONTENT_LENGTH,
     MONGO_SERVER_SELECTION_TIMEOUT_MS,
@@ -79,6 +80,17 @@ def _inject_csrf_token():
     return {'csrf_token': CSRF.ensure(session) if CSRF_ENABLED else ''}
 
 
+def _inject_runtime_flags():
+    """
+    向模板注入运行期开关。
+
+    目前只有 demo_mode：开启时 `base.html` 会在页面顶部显示提示条 ——
+    演示模式下采集可能改用合成数据，必须让看到页面的人知道，
+    否则很容易把演示结果当成真实生物特征比对。
+    """
+    return {'demo_mode': DEMO_MODE}
+
+
 # ---------------------------------------------------------------------------
 # 应用工厂
 # ---------------------------------------------------------------------------
@@ -106,6 +118,8 @@ def create_app(config_overrides=None):
         # 供 SPA 适配层感知开关状态（/api/csrf-token 与前端行为都依赖它）
         CSRF_ENABLED=CSRF_ENABLED,
         CSRF_PROTECTOR=CSRF,
+        # 演示模式：前端据此显示「合成数据」提示。默认关闭，详见 config.py
+        DEMO_MODE=DEMO_MODE,
     )
     if config_overrides:
         app.config.update(config_overrides)
@@ -120,6 +134,7 @@ def create_app(config_overrides=None):
     app.jinja_env.globals['now'] = now_filter
     app.before_request(_verify_csrf)
     app.context_processor(_inject_csrf_token)
+    app.context_processor(_inject_runtime_flags)
 
     _register_blueprints(app)
     _register_spa(app)

@@ -64,6 +64,9 @@ def register_spa(app, mongo, admin_required):
             'isAdmin': bool(is_admin),
             'pendingLogin': pending,
             'systemAvailable': bool(app.config.get('SYSTEM_AVAILABLE', False)),
+            # 演示模式：开启时前端各处需显著提示「合成数据」，避免被误当成
+            # 真实生物特征采集。默认关闭，见 config.py::DEMO_MODE
+            'demoMode': bool(app.config.get('DEMO_MODE', False)),
         })
 
     # ---------------------------------------------------------------

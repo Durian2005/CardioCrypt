@@ -8,7 +8,6 @@
 """
 
 import asyncio
-import random
 import threading
 import time
 from datetime import datetime
@@ -27,6 +26,10 @@ from flask import (
 
 from web_auth import state
 from web_auth.config import USERNAME_RE, logger
+from web_auth.demo import (
+    demo_degrade as _demo_degrade,
+    synthetic_signal_series as _demo_signal_series,
+)
 from web_auth.core import (
     SYSTEM_AVAILABLE,
     authenticate_single_signal,
@@ -49,6 +52,20 @@ from web_auth.services.signals import (
 
 bp = Blueprint('auth', __name__)
 
+
+# ============================================================================
+# 采集降级的统一出口
+# ============================================================================
+# 采集链路里有若干条「拿不到真实数据」的分支：设备没连上、特征不支持通知、
+# 采到的点数不够、串口抛异常。这些分支原来各自直接生成一段合成信号继续往下走，
+# 于是「没采到数据」和「采到了数据」在结果上没有任何区别 —— 不接设备点验证，
+# 也能得到一次「验证成功」。
+#
+# 现在把这件事收口到 web_auth/demo.py：**默认不允许模拟**，采集不到就如实失败；
+# 只有显式打开 DEMO_MODE 才允许用合成信号把流程走完，且每一次降级都留痕。
+#
+# 注意这里改的是「数据从哪来」，不是「判定怎么下」—— 合成信号照样要过模型
+# 比对，照样可能不通过。判定结论的唯一来源始终是算法输出。
 
 
 # 路由: 首页
@@ -212,6 +229,37 @@ def start_verification():
             # 本地引用，方便访问
             current_verification_data = state.verification_results[username]
             
+            # 本次验证中所有「采集降级」的原因，随结果一起透出给前端
+            demo_reasons = []
+            
+            def fail(reason, status='failed'):
+                """把本次验证定格为失败并写明原因。"""
+                with state.verification_lock:
+                    state.verification_results[username] = {
+                        'status': status,
+                        'timestamp': datetime.now(),
+                        'error_message': reason,
+                    }
+                state.touch_state('verification', username)
+            
+            def finish(success, score=None):
+                """
+                把本次验证定格为最终结论。演示模式下降级过的，
+                附上标记与原因，避免前端把合成信号的结果当成真实比对。
+                """
+                with state.verification_lock:
+                    entry = {
+                        'status': 'success' if success else 'failed',
+                        'timestamp': datetime.now(),
+                    }
+                    if score is not None:
+                        entry['score'] = float(score)
+                    if demo_reasons:
+                        entry['demo'] = True
+                        entry['demo_reasons'] = list(demo_reasons)
+                    state.verification_results[username] = entry
+                state.touch_state('verification', username)
+            
             # 检查设备类型
             device_type = device_info.get('type', 'ble') if device_info else 'ble'
             
@@ -221,9 +269,15 @@ def start_verification():
                 model = get_user_model(username)
                 
                 if model is None:
-                    logger.warning(f"无法加载用户 {username} 的模型，使用模拟验证")
-                    # 模拟验证结果 (85%的成功率)
-                    success = np.random.random() < 0.85
+                    # 用户没走完注册采集（库里没有对应模型文件），压根没有可比对的
+                    # 参照物。这既不是「比对不通过」，也没有任何依据可以放行 ——
+                    # 一律按错误处理，让用户重新完成注册采集。
+                    fail(
+                        '用户模型不可用：未完成注册采集或模型文件缺失',
+                        status='error',
+                    )
+                    logger.error("验证中止：用户 %s 的模型不可用，需重新完成注册采集", username)
+                    return
                 else:
                     # 确定序列长度，使用配置中的值
                     sequence_length = dynamic_config.get('signal', 'length', 1000)
@@ -235,6 +289,7 @@ def start_verification():
                     collection_complete = False
                     collection_event = threading.Event()
                     data_collected_successfully = False  # 添加标志，表示是否已成功采集数据
+                    data_collected = False  # BLE 采集结果；串口分支不使用，先给默认值避免下方引用未定义
                     
                     # 检查设备类型并选择数据收集方式
                     if device_type == 'serial':
@@ -246,7 +301,9 @@ def start_verification():
                             
                             # 检查串口连接
                             if not EnvironmentManager.is_serial_data_fresh(max_age_seconds=5.0):
-                                logger.warning("串口设备未连接或未返回有效数据，使用模拟数据")
+                                if not _demo_degrade('串口设备未连接或未返回有效数据', demo_reasons):
+                                    fail('未检测到串口设备数据，无法完成身份验证')
+                                    return
                                 use_simulated_data = True
                             else:
                                 use_simulated_data = False
@@ -337,51 +394,40 @@ def start_verification():
                                     collection_event.set()
                                     data_collected_successfully = True  # 标记数据已成功采集
                                 else:
-                                    # 没有采集到任何数据，使用模拟数据
-                                    logger.warning("验证：未采集到数据，将使用模拟数据")
+                                    logger.warning("验证：串口未采集到任何数据点")
                                 
-                                # 如果数据不足，使用模拟数据补充
+                                # 数据不足 60 点：默认判失败，只有演示模式才补齐
                                 if len(collected_data) < 60:
-                                    logger.warning(f"验证：串口设备数据不足（获取到{len(collected_data)}个点，需要60个点），使用模拟数据补充")
+                                    if not _demo_degrade(
+                                        '串口仅提供 %d 个数据点（需要 60 个）' % len(collected_data),
+                                        demo_reasons,
+                                    ):
+                                        fail('串口采集的数据量不足，无法完成身份验证')
+                                        return
                                     
                                     needed_count = 60 - len(collected_data)
-                                    for _ in range(needed_count):
-                                        # 随机心率变化
-                                        heart_rate = 70 + random.uniform(-10, 10)
-                                        
-                                        # 生成ECG数据
-                                        ecg_data = heart_rate_to_ecg(heart_rate)
-                                        
-                                        # 添加到收集数据
-                                        collected_data.append(ecg_data)
+                                    collected_data.extend(_demo_signal_series(needed_count))
                                     
-                                    logger.info(f"验证：模拟数据补充完成，总数据点: {len(collected_data)}")
+                                    logger.info(f"验证：[DEMO] 已补齐 {needed_count} 个合成数据点，总数据点: {len(collected_data)}")
                                     collection_complete = True
                                     collection_event.set()
                             else:
-                                # 完全使用模拟数据
-                                logger.warning("验证：使用完全模拟数据进行验证")
+                                # 设备未就绪即进入演示分支（_demo_degrade 已确认演示模式开启）
+                                logger.warning("验证：[DEMO] 串口不可用，改用合成信号完成流程")
                                 
-                                # 生成60个模拟数据点
-                                for _ in range(60):
-                                    heart_rate = 70 + random.uniform(-10, 10)
-                                    ecg_data = heart_rate_to_ecg(heart_rate)
-                                    collected_data.append(ecg_data)
+                                collected_data = _demo_signal_series(60)
                                 
-                                logger.info(f"验证：已生成 {len(collected_data)} 个模拟数据点")
+                                logger.info(f"验证：[DEMO] 已生成 {len(collected_data)} 个合成数据点")
                                 collection_complete = True
                                 collection_event.set()
                         except Exception as e:
-                            logger.error(f"验证：串口设备数据采集失败: {str(e)}，使用模拟数据")
+                            if not _demo_degrade('串口数据采集异常: %s' % e, demo_reasons):
+                                fail('串口数据采集失败，无法完成身份验证')
+                                return
                             
-                            # 使用模拟数据
-                            collected_data = []
-                            for _ in range(60):
-                                heart_rate = 70 + random.uniform(-10, 10)
-                                ecg_data = heart_rate_to_ecg(heart_rate)
-                                collected_data.append(ecg_data)
+                            collected_data = _demo_signal_series(60)
                             
-                            logger.info(f"验证：已生成 {len(collected_data)} 个模拟数据点")
+                            logger.info(f"验证：[DEMO] 已生成 {len(collected_data)} 个合成数据点")
                             collection_complete = True
                             collection_event.set()
                         
@@ -447,7 +493,7 @@ def start_verification():
                             # 检查BLE设备是否可用
                             
                             if not state.ble_device_client or not state.ble_device_client.is_connected:
-                                logger.warning("BLE设备未连接或不可用，使用模拟数据")
+                                logger.warning("BLE 设备未连接或不可用，无法采集真实数据")
                                 return (False, None)
                             
                             # 使用全局变量中的设备客户端
@@ -477,11 +523,11 @@ def start_verification():
                                         break
                             
                             if not hr_service_found:
-                                logger.warning("设备不支持心率服务，使用模拟数据")
+                                logger.warning("设备不支持心率服务，无法采集真实数据")
                                 return (False, None)
                             
                             if not hr_char_uuid:
-                                logger.warning("未找到心率特征或特征不支持通知，使用模拟数据")
+                                logger.warning("未找到心率特征或特征不支持通知，无法采集真实数据")
                                 return (False, None)
                             
                             # 直接使用device_client启用通知
@@ -501,7 +547,7 @@ def start_verification():
                                 logger.debug(f"已成功启用设备心率特征通知")
                                 notify_enabled = True
                             except Exception as notify_error:
-                                logger.warning(f"启用心率通知失败: {str(notify_error)}，使用模拟数据")
+                                logger.warning(f"启用心率通知失败: {str(notify_error)}，无法采集真实数据")
                                 return (False, None)
                             
                             notify_enabled = True
@@ -516,7 +562,7 @@ def start_verification():
                                 # 检查是否已经超时
                                 elapsed_time = time.time() - start_time
                                 if elapsed_time >= timeout:
-                                    logger.warning(f"数据采集超时 ({timeout}秒)，切换到模拟数据")
+                                    logger.warning(f"数据采集超时 ({timeout}秒)，未取到足够数据")
                                     break
                                     
                                 # 检查连接状态
@@ -670,37 +716,28 @@ def start_verification():
                     # 如果数据采集失败或不足，需要补充模拟数据
                     if (not data_collected_successfully and not data_collected) or len(collected_data) < 60:
                         partial_data_count = len(collected_data)
-                        logger.info(f"验证：设备数据不足（获取到{partial_data_count}个点，需要60个点），使用模拟数据补充")
                         
-                        # 如果有部分数据但不足60点，则补充
-                        if partial_data_count > 0 and partial_data_count < 60:
-                            needed_count = 60 - partial_data_count
-                            logger.info(f"验证：已收集 {partial_data_count} 个设备数据点，需要生成 {needed_count} 个模拟数据点")
-                            
-                            # 生成补充模拟数据
-                            for _ in range(needed_count):
-                                # 随机心率变化，模拟真实验证场景
-                                heart_rate = 70 + random.uniform(-10, 10)
-                                
-                                # 生成ECG数据
-                                ecg_data = heart_rate_to_ecg(heart_rate)
-                                
-                                # 添加到采集数据
-                                collected_data.append(ecg_data)
-                            
-                            logger.info(f"验证：模拟数据补充完成，总数据点: {len(collected_data)}")
+                        # 设备没给够数据 —— 这是整条链路最后一道「补齐」出口，
+                        # 也是原先「不接设备也能验证成功」的来源。默认判失败，
+                        # 只有演示模式才允许用合成信号凑够 60 点。
+                        reason = (
+                            '设备仅提供 %d 个数据点（需要 60 个）' % partial_data_count
+                            if partial_data_count > 0 else
+                            '未采集到任何设备数据'
+                        )
+                        if not _demo_degrade(reason, demo_reasons):
+                            fail('未采集到足够的设备数据，无法完成身份验证')
+                            return
+                        
+                        needed_count = max(0, 60 - partial_data_count)
+                        if partial_data_count > 0:
+                            logger.info(f"验证：[DEMO] 已收集 {partial_data_count} 个设备数据点，补齐 {needed_count} 个合成数据点")
+                            collected_data.extend(_demo_signal_series(needed_count))
                         else:
-                            # 完全使用模拟数据
-                            logger.info(f"验证：使用完全模拟数据进行验证")
-                            collected_data = []
-                            
-                            # 生成60个模拟数据点
-                            for _ in range(60):
-                                heart_rate = 70 + random.uniform(-10, 10)
-                                ecg_data = heart_rate_to_ecg(heart_rate)
-                                collected_data.append(ecg_data)
-                            
-                            logger.info(f"验证：已生成 {len(collected_data)} 个模拟数据点")
+                            logger.info("验证：[DEMO] 无设备数据，全部使用合成数据")
+                            collected_data = _demo_signal_series(60)
+                        
+                        logger.info(f"验证：[DEMO] 合成数据准备完成，总数据点: {len(collected_data)}")
                     
                     # 如果成功采集到数据，则进行验证
                     if len(collected_data) > 0:
@@ -741,44 +778,33 @@ def start_verification():
                                     # 调用身份验证函数
                                     auth_result = authenticate_single_signal(model, signal_data, threshold=state.admin_config['model_threshold'])
                                     
-                                    # 设置验证结果
-                                    with state.verification_lock:
-                                        if auth_result['authenticated']:
-                                            state.verification_results[username]['status'] = 'success'
-                                            state.verification_results[username]['score'] = float(auth_result['score'])
-                                            logger.info(f"用户 {username} 验证成功，得分: {auth_result['score']:.4f}")
-                                        else:
-                                            state.verification_results[username]['status'] = 'failed'
-                                            state.verification_results[username]['score'] = float(auth_result['score'])
-                                            logger.info(f"用户 {username} 验证失败，得分: {auth_result['score']:.4f}")
+                                    # 判定结论只来自算法输出，这里不做任何改写
+                                    passed = bool(auth_result['authenticated'])
+                                    finish(passed, score=auth_result['score'])
+                                    logger.info(
+                                        "用户 %s 验证%s，得分: %.4f",
+                                        username, '成功' if passed else '失败', auth_result['score'],
+                                    )
                                 else:
-                                    # 系统不可用时模拟验证结果
-                                    success = True
-                                    with state.verification_lock:
-                                        state.verification_results[username]['status'] = 'success' if success else 'failed'
+                                    # 算法层不可用（导入失败），没有比对能力，
+                                    # 也就没有任何依据可以判定通过。
+                                    fail('算法层不可用，无法进行特征比对', status='error')
+                                    return
                             else:
-                                # 如果没有有效的信号数据
-                                logger.warning("验证：无有效信号数据，使用默认结果")
-                                with state.verification_lock:
-                                    state.verification_results[username]['status'] = 'success'  # 默认成功
+                                # 采集到的数据全都不是有效数组
+                                fail('采集到的信号无效，无法完成身份验证')
+                                return
                         except Exception as process_error:
                             logger.error(f"验证数据处理错误: {str(process_error)}")
-                            with state.verification_lock:
-                                state.verification_results[username]['status'] = 'error'
-                                state.verification_results[username]['error'] = str(process_error)
+                            fail('验证数据处理异常: %s' % process_error, status='error')
+                            return
                     else:
-                        # 如果未能采集到足够的数据，使用模拟验证
-                        logger.warning(f"未能采集到足够数据，使用模拟验证")
-                        success = True
-                        
-                        with state.verification_lock:
-                            state.verification_results[username]['status'] = 'success' if success else 'failed'
+                        # 走到这里说明 collected_data 仍为空：
+                        # 演示模式关闭时上面已经 return，只有异常路径会落到这。
+                        fail('未采集到可用于验证的信号数据')
             else:
-                # 如果系统不可用，使用模拟验证
-                success = True
-                
-                with state.verification_lock:
-                    state.verification_results[username]['status'] = 'success' if success else 'failed'
+                # 算法层不可用（导入失败），没有比对能力
+                fail('算法层不可用，无法进行特征比对', status='error')
                 
         except Exception as e:
             logger.error(f"验证线程错误: {e}")
@@ -829,6 +855,8 @@ def verification_status():
             # 检查是否处于状态已确定阶段（成功或失败）
             if result['status'] == 'success' or result['status'] == 'failed' or result['status'] == 'error':
                 # 认证结果以真实比对结果为准，不做任何改写
+                demo = bool(result.get('demo'))
+                
                 if result['status'] == 'success':
                     # 设置登录会话
                     session.permanent = True
@@ -836,22 +864,32 @@ def verification_status():
                     session.pop('pending_login', None)
                     state.verification_results.pop(username, None)
                     
-                    return jsonify({
+                    payload = {
                         'success': True,
                         'status': 'completed',
                         'redirect': url_for('dashboard.dashboard')
-                    })
+                    }
+                    if demo:
+                        # 演示模式下本次用了合成信号，如实告知前端
+                        payload['demo'] = True
+                    return jsonify(payload)
                     
                 elif result['status'] == 'failed' or result['status'] == 'error':
+                    reason = result.get('error_message')
                     # 清除登录会话与验证结果
                     session.pop('pending_login', None)
                     state.verification_results.pop(username, None)
                     
-                    return jsonify({
+                    payload = {
                         'success': True,
                         'status': 'failed',
                         'redirect': url_for('auth.login')
-                    })
+                    }
+                    if reason:
+                        payload['reason'] = reason
+                    if demo:
+                        payload['demo'] = True
+                    return jsonify(payload)
             else:
                 # 验证仍在进行中
                 return jsonify({
