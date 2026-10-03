@@ -1,7 +1,23 @@
 """
-主封装模块
+主封装模块（已废弃 · 保留供参考，请勿在新代码中调用）
+=========================================================================
 
-提供与原始main.py相同接口的函数，但使用模块化实现
+本模块是早期把 `main.py` 的流程拆成模块化实现时留下的**薄封装层**：每个函数
+都只是转调 `model_example` 里对应的模块，本身不含独立逻辑。**当前无任何调用方**：
+
+* 仓库内没有任何地方调用这里的 7 个函数。`web_auth.core` 曾导入
+  `create_and_train_model` / `authenticate_user`（也因此从未被调用），现已移除。
+* 生产链路走的是各模块本身：`web_auth/blueprints/device.py` 直接用
+  `create_model` / `train_model` / `save_model`，验证用 `authenticate_single_signal`。
+
+**不要让本模块重新进入 import 图。** 它在顶层导入
+`ecgppg_system.devices.device_manager.EnvironmentManager`，而后者依赖串口相关的
+可选依赖；一旦缺失，本模块 import 失败会顺着 `web_auth.core` 的 try 把
+`SYSTEM_AVAILABLE` 置为 False，整个 Web 层跟着降级 —— 而它并不提供任何在用
+的能力，代价与收益完全不成比例。
+
+保留而不删除的原因：这是项目原始贡献者提交的实现，删除会抹去他人的代码与
+历史；标注废弃可以让后来者少踩一遍同样的坑。
 """
 
 import torch

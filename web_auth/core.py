@@ -28,8 +28,10 @@ from web_auth.extensions import mongo
 try:
     from ecgppg_system.config import settings
     from ecgppg_system.config import config as dynamic_config
-    # 导入main中的函数替代model_factory
-    from model_example.main_wrapper import create_and_train_model, authenticate_user
+    # 刻意不导入 model_example.main_wrapper：它顶层依赖 EnvironmentManager
+    # （串口相关），一旦那部分缺失就会让整个 try 失败、SYSTEM_AVAILABLE 被置
+    # 为 False，连带拖垮 Web 层；而它导出的封装函数在本仓库内没有任何调用方
+    # （见该文件顶部的废弃说明）。
     from model_example.model_creator import create_model, setup_model_device
     from model_example.model_trainer import train_model, configure_data_augmentation
     from model_example.model_evaluator import validate_model
@@ -59,8 +61,6 @@ except ImportError as e:
 
     dynamic_config = None
     settings = None
-    create_and_train_model = _algorithm_module_unavailable
-    authenticate_user = _algorithm_module_unavailable
     create_model = _algorithm_module_unavailable
     setup_model_device = _algorithm_module_unavailable
     train_model = _algorithm_module_unavailable

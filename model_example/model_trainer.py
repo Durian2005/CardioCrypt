@@ -14,7 +14,6 @@ from typing import Dict, Any, Optional, Tuple, List, Union
 from ecgppg_system.config import settings
 from ecgppg_system.config import config as dynamic_config
 from ecgppg_system.models.trainer import ModelTrainer
-from ecgppg_system.devices.device_manager import EnvironmentManager
 from ecgppg_system.utils.logger import logger
 
 def setup_training_environment(model: nn.Module, 
