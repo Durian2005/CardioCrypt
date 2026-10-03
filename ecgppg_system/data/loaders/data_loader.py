@@ -10,11 +10,8 @@ import os
 import glob
 import numpy as np
 import pandas as pd
-import logging
 import torch
 from torch.utils.data import TensorDataset, DataLoader
-from scipy import signal
-from scipy.signal import butter, filtfilt
 
 from ecgppg_system.utils.logger import logger
 
@@ -82,7 +79,7 @@ class SignalDataLoader:
                     logger.warning(f"加载文件失败，跳过: {file_path}, 错误: {str(e)}")
             
             if not dfs:
-                raise ValueError(f"没有成功加载任何数据文件")
+                raise ValueError("没有成功加载任何数据文件")
                 
             # 合并所有数据框
             combined_df = pd.concat(dfs, ignore_index=True)

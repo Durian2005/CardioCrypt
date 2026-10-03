@@ -8,19 +8,16 @@
 
 import os
 import copy
-import logging
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from typing import Dict, Any, Optional, Union, Tuple, List
+from typing import Dict, Any, Optional, Union
 
 from ..utils.logger import logger
 from ..config import settings
 from ..config import config as dynamic_config
 from ..devices.device_manager import EnvironmentManager
-
-logger = logging.getLogger(__name__)
 
 class ModelTrainer:
     """

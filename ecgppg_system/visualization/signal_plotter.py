@@ -5,19 +5,15 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 import seaborn as sns
 import pandas as pd
-from ..utils.logger import logger, setup_logger
+from ..utils.logger import logger
 from ..config import settings
 from ..utils.matplotlib_setup import configure_matplotlib
 from ..utils.font_utils import get_font_prop
 import os
-from matplotlib.gridspec import GridSpec
-import io
-import base64
 import logging
 from .auth_visualizer import AuthenticationVisualizer
 
@@ -26,7 +22,6 @@ configure_matplotlib()
 
 # 设置中文字体支持
 try:
-    import matplotlib.font_manager as fm
     from ecgppg_system.utils.file_utils import get_chinese_fonts
     
     # 获取可用的中文字体
@@ -732,7 +727,9 @@ class SignalPlotter:
         try:
             # 创建图形对象
             fig = Figure(figsize=self.figsize, dpi=dpi)
-            canvas = FigureCanvas(fig)
+            # 必须保留这次调用：它把渲染后端绑到 fig 上，下面的 fig.savefig 依赖它。
+            # 只是不需要接收返回值。
+            FigureCanvas(fig)
             ax = fig.add_subplot(111)
             
             # 绘制信号

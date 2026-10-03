@@ -579,15 +579,6 @@ def start_data_collection():
                                 device=device
                             )
                             confidence = auth_result['score']
-                            authenticated = auth_result['authenticated']
-                        
-                        # 确定验证结果
-                        success = authenticated
-                        verification_details = {
-                            'confidence': float(confidence),
-                            'threshold': float(state.admin_config['model_threshold']),
-                            'authenticated': success
-                        }
                         
                         # 使用管理员配置的阈值
                         if auth_result['authenticated']:

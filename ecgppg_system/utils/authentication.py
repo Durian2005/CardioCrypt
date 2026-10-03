@@ -33,19 +33,11 @@
 """
 
 import gc
-import os
 import traceback
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
-from scipy.spatial.distance import euclidean
-from scipy.signal import find_peaks
-import logging
-from fastdtw import fastdtw
-from scipy.interpolate import interp1d
 from matplotlib.gridspec import GridSpec
-from scipy.spatial.distance import cosine as cosine_distance
-from scipy.stats import pearsonr
 
 from ecgppg_system.data.transformers.signal_analyzer import SignalAnalyzer
 from ecgppg_system.visualization.signal_plotter import SignalPlotter
@@ -214,7 +206,6 @@ class Authenticator:
             
             # 计算相似度
             similarities = []
-            distance_values = []
             alignment_paths = []
             
             # 取两个列表中较小的长度
@@ -298,14 +289,12 @@ class Authenticator:
                         from dtw import dtw
                         alignment = dtw(ref_norm_len, query_norm_len, keep_internals=True)
                         distance = alignment.normalizedDistance
-                        path = alignment.index1
                         logger.info("成功使用dtw-python计算距离")
                     except Exception as e:
                         logger.warning(f"dtw-python调用失败: {str(e)}，尝试使用简单欧氏距离替代")
                         # 使用简单的欧氏距离
                         euclidean_dist = np.sqrt(np.sum((ref_norm_len - query_norm_len) ** 2))
                         distance = euclidean_dist
-                        path = []
                         logger.info(f"使用欧氏距离作为备选: {distance:.4f}")
                     
                     # 归一化DTW距离

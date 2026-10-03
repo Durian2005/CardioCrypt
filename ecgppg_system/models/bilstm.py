@@ -5,9 +5,7 @@ BiLSTM模型模块
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import numpy as np
-from typing import Optional, Tuple, Union, List, Dict, Any
+from typing import Optional, Tuple
 
 from ..utils.logger import setup_logger
 from ..devices.device_manager import EnvironmentManager
@@ -119,8 +117,6 @@ class BiLSTMWithAttention(nn.Module):
         返回:
             Tuple[torch.Tensor, torch.Tensor]: (上下文向量, 注意力权重)
         """
-        batch_size, seq_len = lstm_output.size(0), lstm_output.size(1)
-        
         # 计算注意力分数
         # (batch_size, seq_len, hidden_size*directions) x (hidden_size*directions, 1)
         # -> (batch_size, seq_len, 1)

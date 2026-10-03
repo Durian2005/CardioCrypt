@@ -6,7 +6,7 @@
 
 import torch
 import torch.nn as nn
-from typing import Dict, Any, Optional, Tuple, Union
+from typing import Dict, Any, Optional, Tuple
 
 from ecgppg_system.models.bilstm import BiLSTMWithAttention
 from ecgppg_system.utils.logger import logger
@@ -81,7 +81,7 @@ def setup_model_device(model: nn.Module, device: Optional[torch.device] = None) 
             logger.info("尝试回退到CPU...")
             device = torch.device('cpu')
             model.to(device)
-            logger.info(f"模型已回退到CPU")
+            logger.info("模型已回退到CPU")
     
     return model, device
 

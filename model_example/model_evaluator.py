@@ -7,7 +7,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Dict, Any, Optional, Tuple, List, Union
+from typing import Dict, Any
 
 from ecgppg_system.utils.logger import logger
 
@@ -29,7 +29,7 @@ def validate_model(model: nn.Module,
     Returns:
         dict: 包含验证结果的字典
     """
-    logger.info(f"执行全面模型验证...")
+    logger.info("执行全面模型验证...")
     
     # 验证结果字典
     validation_results = {}

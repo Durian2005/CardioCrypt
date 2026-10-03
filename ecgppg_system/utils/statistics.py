@@ -10,10 +10,9 @@ import seaborn as sns
 import os
 import sys
 from datetime import datetime
-from typing import Dict, List, Tuple, Union, Optional
+from typing import Dict
 import json
 import csv
-import matplotlib.font_manager as fm
 
 from .logger import logger
 from .matplotlib_setup import configure_matplotlib
@@ -554,9 +553,9 @@ class StatisticalAnalyzer:
             
             plt.figure(figsize=(10, 8))
             mask = np.triu(np.ones_like(similarity_matrix, dtype=bool), k=1)
-            heatmap = sns.heatmap(similarity_matrix, annot=True, fmt=".1f", cmap="YlGnBu",
-                               xticklabels=signal_names, yticklabels=signal_names, 
-                               vmin=0, vmax=100, mask=mask)
+            sns.heatmap(similarity_matrix, annot=True, fmt=".1f", cmap="YlGnBu",
+                        xticklabels=signal_names, yticklabels=signal_names,
+                        vmin=0, vmax=100, mask=mask)
             
             # 设置标题，使用中文字体
             if CHINESE_FONT:

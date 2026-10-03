@@ -145,7 +145,7 @@ def warning_to_logger(message, category, filename, lineno, *args, **kwargs):
         # 尝试以字符串形式记录警告
         warning_msg = f"{category.__name__}: {str(message)}"
         module_logger.warning(warning_msg)
-    except Exception as e:
+    except Exception:
         # 如果有任何编码问题，使用简单的消息
         module_logger.warning(f"系统警告: {category.__name__}")
 

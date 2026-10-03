@@ -4,9 +4,7 @@
 """
 
 import numpy as np
-import pandas as pd
-from scipy.signal import find_peaks, peak_prominences, butter, filtfilt
-from scipy.interpolate import interp1d
+from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 from typing import List, Dict, Tuple, Union, Optional
 from ...utils.logger import logger
@@ -358,9 +356,15 @@ class SignalAnalyzer:
         # 计算PPG特征
         features = {}
         
-        # 1. 计算收缩期和舒张期振幅
+        # 1. 计算收缩期振幅
+        #
+        # 原注释写的是「收缩期和舒张期振幅」，但舒张期振幅从未实现（变量声明后
+        # 一直没有被赋值）。这里把注释改成与代码一致，而不是补一个键上去：
+        # PPG 的舒张期振幅按惯常定义指的是**重搏波**的高度，需要先定位重搏切迹
+        # 的位置，而本方法后面只给出 `dicrotic_notch_present` 这个布尔结论、
+        # 并没有定位切迹。硬凑一个「峰值到下个谷值的落差」既不标准，实测在该
+        # 定义下也恒为 0 —— 那反而会让下游以为舒张期振幅真的是 0。
         systolic_amplitudes = []
-        diastolic_amplitudes = []
         
         for i in range(min(len(peaks), len(troughs))):
             if peaks[i] > troughs[i]:
