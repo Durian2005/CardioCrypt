@@ -1,3 +1,21 @@
+"""
+通用模型存取（**训练检查点**格式）
+
+与 `model_example/model_io.py` 是两套**互不相通**的存档格式，不要混用：
+
+* 本模块：服务于 `ecgppg_system/models/trainer.py` 的 `ModelTrainer`。元数据
+  **平铺在顶层**，读回时连 `optimizer_state_dict` 与训练历史一起还原，
+  用于断点续训。
+* `model_io`：服务于 `web_auth` 的**用户模型**存取。元数据收在 `metadata`
+  键下，读回时只取 `state_dict` 与元数据，用于身份比对。
+
+不能互读：本模块写出的文件交给 `model_io.load_model` 时找不到 `metadata` 键，
+会以 `input_size=None` 构造模型而失败。
+
+历史原因：两处各自演化而来。既然用途确实不同（检查点 vs 部署模型），这里
+保留两套并写明边界，而不是强行合并 —— 合并会改动训练检查点的读写行为。
+"""
+
 import os
 import torch
 from ..utils.logger import setup_logger

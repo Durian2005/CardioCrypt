@@ -1,7 +1,11 @@
 """
 模型IO模块
 
-提供模型加载和保存的功能
+提供模型加载和保存的功能。
+
+这里存的是**部署模型**（用于身份比对）：元数据收在 `metadata` 键下，
+`load_model` 返回 `(model, metadata)`。另有一套面向**训练检查点**的格式在
+`ecgppg_system/utils/model_utils.py`，两者互不相通，详见那边的模块说明。
 """
 
 import os

@@ -20,6 +20,13 @@ def validate_data_quality(data: np.ndarray,
                          max_range: float = None) -> Dict[str, Any]:
     """
     验证信号数据质量
+
+    注意：`model_example/model_evaluator.py` 里有一个**同名函数**，但签名与语义
+    完全不同 —— 那个吃 `(train_loader, test_loader, signal_type)`，按训练/测试集
+    划分评估；本函数的第一个参数是**信号数组**。两者不可互换。
+
+    本函数当前没有生产调用方（原先只被已废弃的 `main_wrapper` 引用），
+    生产链路用的是 `model_evaluator` 那份。
     
     Args:
         data: 信号数据，形状为 [samples, features]
