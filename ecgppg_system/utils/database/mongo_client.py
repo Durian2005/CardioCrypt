@@ -2,12 +2,10 @@
 MongoDB客户端连接模块
 用于建立与MongoDB数据库的连接并提供基本操作方法
 """
-import os
 import logging
 from typing import Dict, Any, Optional, List, Union
 from pymongo import MongoClient
 from pymongo.collection import Collection
-from pymongo.database import Database
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 from ecgppg_system.config import settings
 

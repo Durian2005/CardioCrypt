@@ -6,17 +6,15 @@
 """
 
 import os
-import sys
 import platform
 import matplotlib.pyplot as plt
 import matplotlib as mpl
-from matplotlib.font_manager import FontProperties, fontManager
+from matplotlib.font_manager import FontProperties
 import numpy as np
 from ..utils.logger import logger
 import matplotlib.font_manager as fm
 import warnings
 
-from ..utils.file_utils import ensure_dir
 
 # 默认中文字体文件路径
 FONT_FILES = {

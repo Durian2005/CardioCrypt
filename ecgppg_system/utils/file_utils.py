@@ -7,7 +7,6 @@
 """
 
 import os
-import shutil
 import glob
 import json
 import csv

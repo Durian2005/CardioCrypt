@@ -3,7 +3,6 @@
 提供身份认证结果的可视化功能
 """
 
-import os
 import numpy as np
 import matplotlib.pyplot as plt
 from ..utils.logger import setup_logger

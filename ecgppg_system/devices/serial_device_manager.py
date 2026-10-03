@@ -6,14 +6,12 @@
 提供串口设备的发现、连接和数据解析功能
 """
 
-import os
 import time
 import serial
 import serial.tools.list_ports
 import threading
 import logging
-import numpy as np
-from typing import List, Dict, Tuple, Optional, Callable, Any, Union
+from typing import List, Dict, Callable, Any
 
 logger = logging.getLogger(__name__)
 

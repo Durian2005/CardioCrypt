@@ -1,7 +1,7 @@
 import os
 import json
 from datetime import datetime
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from ..utils.logger import setup_logger
 from ..config import settings
 

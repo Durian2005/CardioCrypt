@@ -20,11 +20,9 @@ import logging
 
 from flask import (
     jsonify,
-    redirect,
     request,
     send_from_directory,
     session,
-    url_for,
 )
 
 logger = logging.getLogger('web_auth.spa')

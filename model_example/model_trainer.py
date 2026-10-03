@@ -7,9 +7,7 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
-import logging
-from typing import Dict, Any, Optional, Tuple, List, Union
+from typing import Dict, Any, Optional, Tuple
 
 from ecgppg_system.config import settings
 from ecgppg_system.config import config as dynamic_config

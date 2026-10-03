@@ -22,7 +22,7 @@ import secrets
 import threading
 import time
 from collections import OrderedDict, deque
-from typing import Deque, Dict, Optional
+from typing import Deque, Dict
 
 
 class RateLimiter:

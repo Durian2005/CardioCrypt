@@ -12,7 +12,7 @@ import os
 import torch
 import torch.nn as nn
 from datetime import datetime
-from typing import Dict, Any, Optional, Tuple, Union, List
+from typing import Dict, Any, Tuple
 
 from ecgppg_system.models.bilstm import BiLSTMWithAttention
 from ecgppg_system.utils.logger import logger

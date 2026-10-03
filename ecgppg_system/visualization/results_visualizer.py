@@ -6,8 +6,6 @@
 import os
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
-import seaborn as sns
 from ..utils.logger import setup_logger
 
 logger = setup_logger(__name__)

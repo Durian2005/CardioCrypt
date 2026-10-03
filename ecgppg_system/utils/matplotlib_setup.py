@@ -8,7 +8,6 @@ Matplotlib设置模块
 
 from .font_utils import configure_matplotlib_fonts
 import matplotlib.pyplot as plt
-import numpy as np
 
 def configure_matplotlib():
     """配置matplotlib环境"""

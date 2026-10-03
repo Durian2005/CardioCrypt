@@ -6,13 +6,8 @@
 
 import numpy as np
 import torch
-from typing import Dict, Any, Optional, Tuple, List, Union
-import pandas as pd
-import matplotlib.pyplot as plt
-from io import BytesIO
-import base64
+from typing import Dict, Any
 
-from ecgppg_system.utils.logger import logger
 
 def validate_data_quality(data: np.ndarray, 
                          signal_type: str, 

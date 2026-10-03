@@ -22,23 +22,20 @@
 
 import torch
 import torch.nn as nn
-import torch.optim as optim
 import numpy as np
-from typing import Dict, Any, Optional, Tuple, List, Union
+from typing import Dict, Any, Optional, Tuple, Union
 import os
 
 from ecgppg_system.utils.logger import logger
 from ecgppg_system.config import settings
-from ecgppg_system.models.bilstm import BiLSTMWithAttention
-from ecgppg_system.devices.device_manager import EnvironmentManager
 
 # 导入所有模块化组件
-from model_example.model_creator import create_model, configure_model_architecture, setup_model_device
+from model_example.model_creator import create_model, setup_model_device
 from model_example.model_io import save_model, load_model, get_automatic_save_path
-from model_example.model_trainer import train_model, configure_data_augmentation, setup_early_stopping
+from model_example.model_trainer import train_model, configure_data_augmentation
 from model_example.model_evaluator import validate_model, evaluate_model_metrics
-from model_example.data_validator import validate_data_quality, check_data_overlap
-from model_example.model_predictor import predict_sequence, batch_predict, calculate_prediction_metrics
+from model_example.data_validator import validate_data_quality
+from model_example.model_predictor import predict_sequence
 from model_example.authentication import authenticate_single_signal, authenticate_dual_signals
 
 def create_and_train_model(train_loader: torch.utils.data.DataLoader,

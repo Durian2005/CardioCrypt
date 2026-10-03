@@ -7,7 +7,7 @@
 import torch
 import torch.nn as nn
 import numpy as np
-from typing import Dict, Any, Optional, Tuple, List, Union
+from typing import Dict, Optional, Tuple, List
 
 from ecgppg_system.utils.logger import logger
 
