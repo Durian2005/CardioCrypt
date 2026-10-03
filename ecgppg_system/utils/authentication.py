@@ -32,7 +32,9 @@
 ``model_example.authentication`` 迁回本模块。
 """
 
+import gc
 import os
+import traceback
 import numpy as np
 import matplotlib.pyplot as plt
 import torch
@@ -548,6 +550,69 @@ class Authenticator:
             
         except Exception as e:
             logger.error(f"可视化身份验证结果时出错: {str(e)}")
+
+
+def _plot_similarity_gauge(ax, value, threshold, title, color_good='green', color_bad='red'):
+    """
+    在极坐标轴上绘制指针式相似度仪表盘。
+
+    绘制口径与 ``visualization.auth_visualizer.AuthenticationVisualizer._create_gauge``
+    保持一致：``value`` / ``threshold`` 均按百分比（0~100）解释。
+
+    参数:
+        ax: matplotlib 极坐标子图（``polar=True``）
+        value: 当前相似度（百分比）
+        threshold: 判定阈值（百分比）
+        title: 仪表盘标题
+        color_good: 达标时的指针颜色
+        color_bad: 未达标时的指针颜色
+    """
+    theta = np.linspace(0, 180, 100) * np.pi / 180
+    r = np.ones_like(theta)
+
+    # 极坐标参数：0 度朝正上方、逆时针展开，只保留上半圈
+    ax.set_theta_zero_location("N")
+    ax.set_theta_direction(-1)
+    ax.set_rlim(0, 1.5)
+    ax.set_thetamin(0)
+    ax.set_thetamax(180)
+
+    # 盘面背景
+    ax.fill_between(theta, 0, r, color='lightgray', alpha=0.3)
+
+    # 阈值刻度线
+    threshold_angle = threshold * np.pi / 100
+    ax.plot([threshold_angle, threshold_angle], [0, 1], 'k--', linewidth=2)
+
+    # 当前值指针
+    value_angle = min(value, 100) * np.pi / 100
+    color = color_good if value >= threshold else color_bad
+    ax.arrow(
+        np.pi / 2, 0, (value_angle - np.pi / 2), 0.8,
+        head_width=0.1, head_length=0.1, fc=color, ec=color, linewidth=2,
+    )
+
+    # 刻度标签
+    angles = np.array([0, 45, 90, 135, 180]) * np.pi / 180
+    ax.set_xticks(angles)
+    ax.set_xticklabels(['0%', '25%', '50%', '75%', '100%'])
+    plt.setp(ax.yaxis.get_ticklabels(), visible=False)
+    ax.set_title(title, pad=15, fontsize=14)
+
+    # 数值与判定结果
+    verdict = '通过' if value >= threshold else '未通过'
+    ax.text(
+        np.pi / 2, -0.2, f"{value:.1f}% ({verdict})",
+        horizontalalignment='center', fontsize=12, color=color, fontweight='bold',
+    )
+
+    # 阈值标签
+    ax.text(
+        threshold_angle, 1.1, f"阈值: {threshold:.1f}%",
+        horizontalalignment='center', fontsize=10,
+        rotation=threshold * 180 / 100 - 90,
+    )
+
 
 def compute_signal_similarity(signal1, signal2, method='all'):
     """
