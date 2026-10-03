@@ -26,15 +26,23 @@ import {
   StaggerItem,
 } from '@/components/motion'
 import { EcgWave } from '@/components/visuals/ecg-wave'
-import { dashboard, type DashboardData } from '@/lib/api'
+import {
+  dashboard,
+  errorText,
+  type DashboardData,
+  type RealtimeHealthData,
+} from '@/lib/api'
 import { useSession } from '@/components/session-provider'
 import { formatTime } from '@/lib/utils'
+
+/** 实时数据轮询间隔：接口每次返回的都是一组新采样值 */
+const REALTIME_INTERVAL_MS = 3000
 
 export default function DashboardPage() {
   const { info } = useSession()
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
-  const [heartRate, setHeartRate] = useState<number | null>(null)
+  const [realtime, setRealtime] = useState<RealtimeHealthData | null>(null)
   const [clock, setClock] = useState(formatTime(new Date()))
   const [refreshing, setRefreshing] = useState(false)
 
@@ -51,8 +59,8 @@ export default function DashboardPage() {
     try {
       const d = await dashboard.data()
       setData(d)
-    } catch {
-      if (!silent) toast.error('仪表盘数据加载失败')
+    } catch (err) {
+      if (!silent) toast.error(errorText(err, '仪表盘数据加载失败'))
     } finally {
       setLoading(false)
       setRefreshing(false)
@@ -63,51 +71,73 @@ export default function DashboardPage() {
     void load()
   }, [])
 
-  /* 模拟实时心率 */
+  /*
+   * 实时生理数据
+   *
+   * 这些值取自后端接口（接口层已声明为合成数据），而不是在页面里现编 ——
+   * 原先这里用正弦叠加随机数伪造心率，界面上却写着「实时监测中」，
+   * 与接口层已经做好的 `synthetic` 标注口径对不上。
+   */
   useEffect(() => {
-    const tick = () => {
-      setHeartRate(68 + Math.round(Math.sin(Date.now() / 4000) * 5 + Math.random() * 3))
+    let cancelled = false
+
+    const tick = async () => {
+      try {
+        const d = await dashboard.realtime()
+        if (!cancelled) setRealtime(d)
+      } catch {
+        /* 实时值取不到不影响页面其余部分，卡片会显示占位符 */
+      }
     }
-    tick()
-    const id = window.setInterval(tick, 2200)
-    return () => window.clearInterval(id)
+
+    void tick()
+    const id = window.setInterval(tick, REALTIME_INTERVAL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(id)
+    }
   }, [])
 
   const s = data?.user_stats
   const sys = data?.system_stats
   const perf = data?.performance_data
+  const syntheticNote = data?.synthetic_note
+
+  // 设备是否在线取自真实来源（进程内有没有已连接的设备句柄），不再写死
+  const deviceOnline = (sys?.total_devices ?? 0) > 0
 
   const metrics = [
     {
       icon: HeartPulse,
       label: '当前心率',
-      value: heartRate ?? 0,
+      value: realtime?.heart_rate ?? null,
+      text: '--',
       suffix: ' BPM',
-      hint: '实时监测中',
+      hint: '示意数据，非真实测量',
       tone: 'primary' as const,
     },
     {
       icon: Smile,
       label: '情绪状态',
       value: null,
-      text: '平静',
-      hint: '状态稳定',
+      text: realtime?.emotion_status ?? '--',
+      hint: '示意数据，非真实测量',
       tone: 'accent' as const,
     },
     {
       icon: AlertTriangle,
       label: '预警等级',
       value: null,
-      text: '正常',
-      hint: '低风险',
+      text: realtime?.alert_level ?? '--',
+      hint: '示意数据，非真实测量',
       tone: 'success' as const,
     },
     {
       icon: Watch,
       label: '设备状态',
       value: null,
-      text: '已连接',
-      hint: 'ONLINE',
+      text: deviceOnline ? '已连接' : '未连接',
+      hint: deviceOnline ? 'ONLINE' : 'OFFLINE',
       tone: 'primary' as const,
       action: true,
     },
@@ -155,6 +185,19 @@ export default function DashboardPage() {
         </header>
       </FadeUp>
 
+      {/* 示意数据提示：与演示模式同一套留痕口径 —— 不让人把合成内容当成真实统计 */}
+      {!loading && syntheticNote ? (
+        <div className="mb-6 flex items-start gap-3 rounded-[var(--radius-lg)] border border-[hsl(var(--warning)/0.35)] bg-[hsl(var(--warning)/0.1)] px-4 py-3">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[hsl(var(--warning))]" />
+          <p className="text-sm leading-relaxed text-[hsl(var(--muted-foreground))]">
+            {syntheticNote}
+            <span className="ml-1 text-[hsl(var(--foreground))]">
+              带「示意数据」标记的区块由系统合成，不能作为任何结论的依据。
+            </span>
+          </p>
+        </div>
+      ) : null}
+
       {/* 指标卡 */}
       {loading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -182,19 +225,16 @@ export default function DashboardPage() {
                   <Activity className="size-4 text-[hsl(var(--primary))]" />
                 </span>
                 <div>
-                  <h2 className="text-sm font-semibold">实时生理信号监测</h2>
+                  <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                    实时生理信号监测
+                    <SyntheticTag />
+                  </h2>
                   <p className="text-xs text-[hsl(var(--muted-foreground))]">
-                    ECG · 100 Hz
+                    合成波形 · 100 Hz
                   </p>
                 </div>
               </div>
-              <Badge variant="success">
-                <span className="relative flex size-1.5">
-                  <span className="absolute inline-flex size-full animate-ping rounded-full bg-[hsl(var(--success))] opacity-75" />
-                  <span className="relative inline-flex size-1.5 rounded-full bg-[hsl(var(--success))]" />
-                </span>
-                信号正常
-              </Badge>
+              <Badge variant="muted">本地生成</Badge>
             </div>
 
             <div className="overflow-hidden rounded-[var(--radius-lg)] border border-[hsl(var(--border)/0.6)] bg-[hsl(var(--surface-1)/0.6)] p-5">
@@ -210,7 +250,10 @@ export default function DashboardPage() {
         <Reveal className="lg:col-span-1">
           <Card className="h-full">
             <CardContent className="p-6 pt-6">
-              <h2 className="mb-5 text-sm font-semibold">系统性能</h2>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">系统性能</h2>
+                <SyntheticTag />
+              </div>
               {loading ? (
                 <div className="space-y-4">
                   {[0, 1, 2].map((i) => (
@@ -260,25 +303,29 @@ export default function DashboardPage() {
                 </div>
               ) : (
                 <div className="space-y-2.5">
+                  {/* 运行时长由进程启动时刻算出，是真实值 */}
                   <StatusRow
                     icon={Server}
                     label="系统运行时长"
                     value={sys?.uptime ?? '--'}
                   />
+                  {/* 数据完整性没有可校验的数据源，属示意 */}
                   <StatusRow
                     icon={Zap}
                     label="数据完整性"
                     value={`${sys?.data_integrity ?? 0}%`}
+                    synthetic
                   />
+                  {/* 认证次数取自 auth_history，没有记录时如实写「暂无记录」 */}
                   <StatusRow
                     icon={Activity}
                     label="累计认证"
-                    value={`${s?.successful_auths ?? 0} 次`}
+                    value={countText(s?.successful_auths, s?.has_history)}
                   />
                   <StatusRow
                     icon={ShieldCheck}
                     label="失败拦截"
-                    value={`${s?.failed_auths ?? 0} 次`}
+                    value={countText(s?.failed_auths, s?.has_history)}
                   />
                 </div>
               )}
@@ -290,7 +337,10 @@ export default function DashboardPage() {
         <Reveal delay={0.16} className="lg:col-span-1">
           <Card className="h-full">
             <CardContent className="p-6 pt-6">
-              <h2 className="mb-5 text-sm font-semibold">安全事件</h2>
+              <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-sm font-semibold">安全事件</h2>
+                <SyntheticTag />
+              </div>
               {loading ? (
                 <div className="space-y-3">
                   {[0, 1, 2, 3, 4].map((i) => (
@@ -331,6 +381,27 @@ export default function DashboardPage() {
 }
 
 /* ---------------- 局部组件 ---------------- */
+
+/** 示意数据标记 —— 该区块没有真实来源，必须让看到的人知道 */
+function SyntheticTag() {
+  return (
+    <Badge
+      variant="warning"
+      title="该区块由系统合成，不代表真实测量或统计结果"
+    >
+      示意数据
+    </Badge>
+  )
+}
+
+/** 认证次数的展示：没有记录时写清楚，而不是显示一个有误导性的 0 */
+function countText(
+  count: number | undefined,
+  hasHistory: boolean | undefined
+): string {
+  if (!hasHistory) return '暂无记录'
+  return `${count ?? 0} 次`
+}
 
 function MetricCard({
   icon: Icon,
@@ -427,16 +498,27 @@ function StatusRow({
   icon: Icon,
   label,
   value,
+  synthetic,
 }: {
   icon: LucideIcon
   label: string
   value: string
+  /** 该行数值为系统合成的示意数据，需就地标出 */
+  synthetic?: boolean
 }) {
   return (
     <div className="flex items-center justify-between rounded-[var(--radius-sm)] border border-[hsl(var(--border)/0.5)] bg-[hsl(var(--secondary)/0.3)] px-3.5 py-2.5 transition-colors duration-250 hover:border-[hsl(var(--border))]">
       <span className="flex items-center gap-2.5 text-sm text-[hsl(var(--muted-foreground))]">
         <Icon className="size-4" />
         {label}
+        {synthetic ? (
+          <span
+            className="rounded-full bg-[hsl(var(--warning)/0.14)] px-1.5 py-px text-[10px] font-medium text-[hsl(var(--warning))]"
+            title="该数值由系统合成，不代表真实测量结果"
+          >
+            示意
+          </span>
+        ) : null}
       </span>
       <span className="tabular text-sm font-medium">{value}</span>
     </div>

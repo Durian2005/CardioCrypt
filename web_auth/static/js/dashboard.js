@@ -105,10 +105,19 @@ function updateRealtimeData() {
         .then(response => response.json())
         .then(data => {
             // 更新界面数据
-            document.getElementById('current-heartrate').textContent = data.heartrate;
-            document.getElementById('emotion-status').textContent = data.emotion;
-            document.getElementById('alert-level').textContent = data.alertLevel;
+            // 字段名必须与后端 /api/realtime_health_data 返回的一致：
+            // 这里是 heart_rate / emotion_status / alert_level，原先写成了
+            // heartrate / emotion / alertLevel —— 三个全对不上，
+            // 这几张卡片其实一直停在初始值，接口返回的内容从未被显示过。
+            document.getElementById('current-heartrate').textContent = data.heart_rate;
+            document.getElementById('emotion-status').textContent = data.emotion_status;
+            document.getElementById('alert-level').textContent = data.alert_level;
             document.getElementById('last-update').textContent = '更新于: ' + new Date().toLocaleTimeString();
+            // 设备状态取自后端真实连接情况，与上面几张合成数据的卡片不同
+            const deviceEl = document.getElementById('device-status');
+            if (deviceEl) {
+                deviceEl.textContent = data.device_connected ? '已连接' : '未连接';
+            }
             // 检查预警等级，如果是高风险则弹出警告
             checkAlertLevel(data.alert_level);
             // 更新实时图表数据

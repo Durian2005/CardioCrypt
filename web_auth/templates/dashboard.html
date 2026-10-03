@@ -8,6 +8,16 @@
 
 {% block content %}
 <div class="dashboard-container-fluid" style="margin: 0; padding: 20px; width: 100%;">
+    {# 数据来源说明：本页生理数据由系统合成，没有接真实传感器 #}
+    <div class="alert alert-warning d-flex align-items-start" role="alert">
+        <i class="fas fa-flask me-2 mt-1"></i>
+        <div>
+            <strong>页面数据说明</strong> ——
+            本页的心率、情绪、预警等级与实时波形均为系统合成的示意数据，
+            用于界面演示，<strong>不代表真实测量结果</strong>；
+            「设备状态」取自当前实际连接情况。
+        </div>
+    </div>
     <!-- 仪表盘头部 -->
     <div class="dashboard-header">
         <div class="row align-items-center">
