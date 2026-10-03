@@ -41,7 +41,9 @@
 │   │   └── admin.py           #   管理后台
 │   ├── services/              # 无状态业务函数
 │   │   ├── signals.py         #   信号指标提取与特征组装
-│   │   └── health.py          #   心率 / 情绪 / 告警等级计算
+│   │   ├── collection.py      #   BLE / 串口数据采集（验证与注册共用）
+│   │   ├── health.py          #   心率 / 情绪 / 告警等级计算
+│   │   └── stats.py           #   真实统计聚合（认证次数 / 运行时长等）
 │   ├── spa_adapter.py         # React SPA 适配层（GET→SPA，POST→原逻辑）
 │   ├── frontend/              # React 前端源码
 │   │   └── src/
