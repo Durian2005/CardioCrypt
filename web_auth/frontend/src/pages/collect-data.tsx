@@ -37,6 +37,27 @@ const STEPS = [
 
 type StepKey = (typeof STEPS)[number]['key']
 
+/* ---------------- 轮询约定 ---------------- */
+
+/**
+ * 后端注册流程中「仍在推进」的状态；**不在**这里的一律视为已终止。
+ *
+ * 刻意用白名单，而不是逐个罗列失败态（failed / error / device_error）：后端每新增
+ * 一个终态，黑名单写法都会静默漏掉它 —— 表现为界面永远停在「正在采集」，既不
+ * 出结果也不报错。白名单天然免疫这种情况。
+ * 空串是为「响应里没有 status 字段」留的，此时继续轮询。
+ */
+const ACTIVE_REGISTRATION_STATES = new Set([
+  'collecting',
+  'training',
+  'verifying',
+  'pending',
+  '',
+])
+
+/** 轮询总时长上限：采集约 1 分钟 + 训练数分钟，超出说明后端线程已异常。 */
+const POLL_TIMEOUT_MS = 15 * 60 * 1000
+
 /* ---------------- 页面 ---------------- */
 
 export default function CollectDataPage() {
@@ -158,6 +179,11 @@ export default function CollectDataPage() {
   const pollStatus = useCallback(() => {
     if (pollRef.current) window.clearInterval(pollRef.current)
 
+    const startedAt = Date.now()
+    const stopPolling = () => {
+      if (pollRef.current) window.clearInterval(pollRef.current)
+    }
+
     pollRef.current = window.setInterval(async () => {
       try {
         const res = await registration.status(username)
@@ -175,16 +201,24 @@ export default function CollectDataPage() {
           setStep('done')
           setFinished(true)
           setCollecting(false)
-          if (pollRef.current) window.clearInterval(pollRef.current)
+          stopPolling()
           toast.success('注册流程完成，可以开始使用了')
-        } else if (state === 'failed' || state === 'error') {
-          // 后端现在会为失败写明原因（未采到数据 / 算法层不可用 / 自检未过等），
-          // 有就照实显示，没有才退回通用文案。
+        } else if (!ACTIVE_REGISTRATION_STATES.has(state)) {
+          // 任何「不在推进中」的状态都在此终止：failed / error / device_error，
+          // 以及后端将来新增的终态。后端会为失败写明原因（未采到数据 / 算法层不可用 /
+          // 设备连接断开等），有就照实显示，没有才退回通用文案。
           const reason = String(s.error_message ?? '')
           setCollectStatus(reason || '采集或训练失败，请重试')
           setCollecting(false)
-          if (pollRef.current) window.clearInterval(pollRef.current)
+          stopPolling()
           toast.error(reason || '采集流程失败')
+        } else if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
+          // 状态一直停在推进中、但早已超出合理时长：多半是后端采集/训练线程异常退出
+          // 而没来得及写终态。主动结束，避免无限轮询。
+          setCollectStatus('长时间未收到最终结果，已停止等待 —— 请重试，或查看后端日志确认算法层状态')
+          setCollecting(false)
+          stopPolling()
+          toast.error('采集流程超时')
         } else {
           setProgress((p) => Math.min(96, p + 4))
           setCollectStatus(
