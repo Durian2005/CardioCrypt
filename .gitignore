@@ -58,16 +58,18 @@ output/
 Thumbs.db
 desktop.ini
 
-# 数据文件
-data/raw/
-data/processed/
-data/temp/
+# 数据文件（锚定到仓库根：下面这些目录名在源码树里也有同名邻居，
+# 例如 ecgppg_system/data/ —— 不锚定会连带影响它们）
+/data/raw/
+/data/processed/
+/data/temp/
 
-# 模型文件
-models/*.pt
-models/*.pth
-models/*.onnx
-models/checkpoints/
+# 模型文件（锚定到仓库根：不锚定的 `models/` 会把 ecgppg_system/models/
+# 整目录当成模型目录忽略，那里三个 .py 是必须入库的源码）
+/models/*.pt
+/models/*.pth
+/models/*.onnx
+/models/checkpoints/
 
 # 测试文件
 test_samples/sample_data/
@@ -122,7 +124,8 @@ dist/
 *.onnx
 *.ckpt
 *.safetensors
-models/
+# 锚定到仓库根：不锚定时 `models/` 会连 ecgppg_system/models/ 的源码一起忽略
+/models/
 web_auth/models/
 
 # ===== 本地验证产物 / 截图 =====
