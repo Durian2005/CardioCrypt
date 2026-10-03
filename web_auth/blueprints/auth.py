@@ -7,9 +7,7 @@
 登录与验证启动都有限流、所有写操作都过 CSRF 校验。
 """
 
-import asyncio
 import threading
-import time
 from datetime import datetime
 
 import numpy as np
@@ -26,15 +24,10 @@ from flask import (
 
 from web_auth import state
 from web_auth.config import USERNAME_RE, logger
-from web_auth.demo import (
-    demo_degrade as _demo_degrade,
-    synthetic_signal_series as _demo_signal_series,
-)
 from web_auth.core import (
     SYSTEM_AVAILABLE,
     authenticate_single_signal,
     client_ip,
-    dynamic_config,
     get_user_model,
     load_app_config,
 )
@@ -44,10 +37,12 @@ from web_auth.extensions import (
     clear_session_keep_csrf,
     mongo,
 )
-from web_auth.services.signals import (
-    heart_rate_to_ecg,
-    is_heart_rate_characteristic,
-    is_heart_rate_service,
+from web_auth.services.collection import (
+    SERIAL_VERIFICATION_SECONDS,
+    CollectionAborted,
+    collect_via_ble,
+    collect_via_serial,
+    top_up_or_abort,
 )
 
 bp = Blueprint('auth', __name__)
@@ -245,10 +240,7 @@ def start_verification():
                     }
             state.touch_state('verification', username)
             
-            # 本地引用，方便访问
-            current_verification_data = state.verification_results[username]
-            
-            # 本次验证中所有「采集降级」的原因，随结果一起透出给前端
+                        # 本次验证中所有「采集降级」的原因，随结果一起透出给前端
             demo_reasons = []
             
             def fail(reason, status='failed'):
@@ -298,465 +290,41 @@ def start_verification():
                     logger.error("验证中止：用户 %s 的模型不可用，需重新完成注册采集", username)
                     return
                 else:
-                    # 确定序列长度，使用配置中的值
-                    sequence_length = dynamic_config.get('signal', 'length', 1000)
-                    
-                    # 采集验证数据
+                    # 采集验证数据 —— BLE 与串口两条路径都收口在 services/collection.py
                     collected_data = []
-                    device_client = None
-                    notify_enabled = False
-                    collection_complete = False
-                    collection_event = threading.Event()
-                    data_collected_successfully = False  # 添加标志，表示是否已成功采集数据
-                    data_collected = False  # BLE 采集结果；串口分支不使用，先给默认值避免下方引用未定义
-                    
-                    # 检查设备类型并选择数据收集方式
-                    if device_type == 'serial':
-                        # 使用串口设备收集验证数据
-                        try:
-                            from ecgppg_system.devices.device_manager import EnvironmentManager
-                            
-                            logger.info("使用串口设备收集验证数据")
-                            
-                            # 检查串口连接
-                            if not EnvironmentManager.is_serial_data_fresh(max_age_seconds=5.0):
-                                if not _demo_degrade('串口设备未连接或未返回有效数据', demo_reasons):
-                                    fail('未检测到串口设备数据，无法完成身份验证')
-                                    return
-                                use_simulated_data = True
-                            else:
-                                use_simulated_data = False
-                            
-                            if not use_simulated_data:
-                                # 创建一个后台线程持续读取数据到缓冲区
-                                data_ready_event = threading.Event()
-                                stop_collection = threading.Event()
-                                buffer_lock = threading.Lock()
-                                data_buffer = []
-                                
-                                def buffer_collector():
-                                    nonlocal data_buffer
-                                    while not stop_collection.is_set():
-                                        try:
-                                            # 读取一个数据包
-                                            heart_rate = EnvironmentManager.get_serial_heart_rate()
-                                            if heart_rate > 0:
-                                                # 获取完整数据包的所有信息
-                                                with buffer_lock:
-                                                    data_buffer.append(heart_rate)
-                                                    
-                                                # 每采集到10个有效数据包，发出信号
-                                                if len(data_buffer) % 10 == 0:
-                                                    data_ready_event.set()
-                                                    
-                                            # 短暂休眠，避免占用过高CPU
-                                            time.sleep(0.01)  # 10ms，足够捕获50个包/秒
-                                        except Exception as e:
-                                            logger.error(f"验证：数据采集错误: {str(e)}")
-                                            time.sleep(0.1)
-                                
-                                # 启动缓冲区收集器
-                                collector_thread = threading.Thread(target=buffer_collector, daemon=True)
-                                collector_thread.start()
-                                logger.info("验证：启动串口数据持续采集线程")
-                                
-                                # 主线程处理数据，将原始数据转换为特征
-                                collection_time_seconds = 40  # 固定采集30秒数据(验证需要的时间比注册短)
-                                logger.info(f"验证：开始固定时间采集: {collection_time_seconds}秒")
-                                
-                                # 处理缓冲区数据
-                                processed_count = 0
-                                start_time = time.time()
-                                
-                                # 只根据时间来判断是否继续采集，不再考虑数据点数量
-                                while (time.time() - start_time) < collection_time_seconds:
-                                    # 等待新数据或超时
-                                    data_ready_event.wait(timeout=1.0)
-                                    data_ready_event.clear()
-                                    
-                                    # 处理缓冲区中的数据
-                                    with buffer_lock:
-                                        # 复制数据并清空缓冲区
-                                        current_batch = data_buffer.copy()
-                                        data_buffer.clear()
-                                    
-                                    # 处理批次数据
-                                    if current_batch:
-                                        for heart_rate in current_batch:
-                                            # 生成ECG数据
-                                            ecg_data = heart_rate_to_ecg(heart_rate)
-                                            
-                                            # 添加到采集数据
-                                            collected_data.append(ecg_data)
-                                            processed_count += 1
-                                            
-                                            # 记录进度
-                                            if processed_count % 10 == 0:  # 每10个包记录一次
-                                                elapsed_time = time.time() - start_time
-                                                logger.info(f"验证：已采集 {processed_count} 个数据点，已用时间 {elapsed_time:.2f} 秒")
-                                            
-                                            # 不再根据数据点数量提前结束数据采集
-                                            # 而是让固定时间采集完成
-                                
-                                # 停止收集器线程
-                                stop_collection.set()
-                                collector_thread.join(timeout=2.0)
-                                
-                                # 记录采集结果
-                                actual_collection_time = time.time() - start_time
-                                logger.info(f"验证：数据采集完成，共采集 {processed_count} 个数据点，耗时 {actual_collection_time:.2f} 秒")
-                                
-                                # 无论采集了多少数据，只要时间到了或采集了足够数据就标记完成
-                                if processed_count > 0:
-                                    logger.info(f"验证：采集了 {processed_count} 个数据点，数据采集成功")
-                                    collection_complete = True
-                                    collection_event.set()
-                                    data_collected_successfully = True  # 标记数据已成功采集
-                                else:
-                                    logger.warning("验证：串口未采集到任何数据点")
-                                
-                                # 数据不足 60 点：默认判失败，只有演示模式才补齐
-                                if len(collected_data) < 60:
-                                    if not _demo_degrade(
-                                        '串口仅提供 %d 个数据点（需要 60 个）' % len(collected_data),
-                                        demo_reasons,
-                                    ):
-                                        fail('串口采集的数据量不足，无法完成身份验证')
-                                        return
-                                    
-                                    needed_count = 60 - len(collected_data)
-                                    collected_data.extend(_demo_signal_series(needed_count))
-                                    
-                                    logger.info(f"验证：[DEMO] 已补齐 {needed_count} 个合成数据点，总数据点: {len(collected_data)}")
-                                    collection_complete = True
-                                    collection_event.set()
-                            else:
-                                # 设备未就绪即进入演示分支（_demo_degrade 已确认演示模式开启）
-                                logger.warning("验证：[DEMO] 串口不可用，改用合成信号完成流程")
-                                
-                                collected_data = _demo_signal_series(60)
-                                
-                                logger.info(f"验证：[DEMO] 已生成 {len(collected_data)} 个合成数据点")
-                                collection_complete = True
-                                collection_event.set()
-                        except Exception as e:
-                            if not _demo_degrade('串口数据采集异常: %s' % e, demo_reasons):
-                                fail('串口数据采集失败，无法完成身份验证')
-                                return
-                            
-                            collected_data = _demo_signal_series(60)
-                            
-                            logger.info(f"验证：[DEMO] 已生成 {len(collected_data)} 个合成数据点")
-                            collection_complete = True
-                            collection_event.set()
-                        
-                        # 定义数据回调函数
-                    def notify_callback(sender, data):
-                        nonlocal collection_complete, collected_data, collection_event, notify_enabled
-                        try:
-                            # 处理数据回调逻辑
-                            # 开始接收数据
-                            logger.debug(f"验证：收到心率数据包: {len(data)} 字节")
-                            
-                            # 如果数据采集已完成，忽略后续数据
-                            if collection_complete:
-                                logger.debug("验证数据采集已完成，忽略新数据")
-                                return
-                                
-                            # 检查是否已停止通知
-                            if not notify_enabled:
-                                logger.debug("验证：通知已停止，忽略新数据")
-                                return
-                            
-                            try:
-                                # 解析心率数据（这里简化处理）
-                                if len(data) >= 2:
-                                    heart_rate = data[1]
-                                    logger.info(f"验证：解析到心率 {heart_rate} BPM")
-                                    
-                                    # 生成验证用的ECG数据
-                                    ecg_data = heart_rate_to_ecg(heart_rate)
-                                    
-                                    # 添加到采集数据
-                                    collected_data.append(ecg_data)
-                                    
-                                    # 记录进度
-                                    if len(collected_data) % 10 == 0:
-                                        logger.info(f"验证：已收集 {len(collected_data)} 个数据点")
-                                    
-                                    # 当收集足够数据点时完成（60个数据点，约1分钟）
-                                    if len(collected_data) >= 60:
-                                        logger.info(f"验证：数据采集完成，已收集 {len(collected_data)} 个数据点")
-                                        collection_complete = True
-                                        collection_event.set()
-                                        logger.info("验证：采集完成事件已触发")
-                                        try:
-                                            check_event_status()  # 检查事件状态
-                                        except Exception as e:
-                                            logger.error(f"验证：检查事件状态时出错: {str(e)}")
-                            except RuntimeError as e:
-                                if "Event loop is closed" in str(e):
-                                    logger.warning("验证：事件循环已关闭，忽略数据处理")
-                                    # 设置标志防止后续回调
-                                    collection_complete = True
-                                    notify_enabled = False
-                                else:
-                                    logger.error(f"验证：处理数据时发生RuntimeError: {str(e)}")
-                        except Exception as e:
-                            logger.error(f"验证：数据解析失败: {str(e)}")
-                    
-                    # 尝试连接蓝牙设备并采集数据
-                    async def collect_from_device():
-                        nonlocal device_client, notify_enabled, collection_complete, collection_event
-                        try:
-                            # 检查BLE设备是否可用
-                            
-                            if not state.ble_device_client or not state.ble_device_client.is_connected:
-                                logger.warning("BLE 设备未连接或不可用，无法采集真实数据")
-                                return (False, None)
-                            
-                            # 使用全局变量中的设备客户端
-                            device_client = state.ble_device_client
-                            device_address = state.ble_device_address
-                            selected_device_name = state.ble_device_name
-                            
-                            logger.info(f"使用已连接的设备: {selected_device_name} ({device_address})")
-                            
-                            # 查找心率服务和特征
-                            services = await device_client.get_services()
-                            
-                            # 查找心率服务
-                            hr_service_found = False
-                            hr_char_uuid = None
-                            
-                            for service in services:
-                                # 检查是否是心率服务
-                                if is_heart_rate_service(service.uuid):
-                                    hr_service_found = True
-                                    # 查找心率特征
-                                    for char in service.characteristics:
-                                        if is_heart_rate_characteristic(char.uuid) and 'notify' in char.properties:
-                                            hr_char_uuid = char.uuid
-                                            break
-                                    if hr_char_uuid:
-                                        break
-                            
-                            if not hr_service_found:
-                                logger.warning("设备不支持心率服务，无法采集真实数据")
-                                return (False, None)
-                            
-                            if not hr_char_uuid:
-                                logger.warning("未找到心率特征或特征不支持通知，无法采集真实数据")
-                                return (False, None)
-                            
-                            # 直接使用device_client启用通知
-                            logger.debug(f"直接启用设备心率特征通知，UUID: {hr_char_uuid}")
-                            
-                            # 再次检查设备连接状态，防止在操作过程中连接已断开
-                            if not device_client.is_connected:
-                                logger.warning(f"设备 {device_address} 连接已断开，无法启用通知")
-                                with state.verification_lock:
-                                    state.verification_results[username]['status'] = 'device_error'
-                                    state.verification_results[username]['error_message'] = '设备连接已断开，无法启用通知'
-                                return (False, None)
-                            
-                            try:
-                                # 直接在特征上启用通知，绑定回调函数
-                                await device_client.start_notify(hr_char_uuid, notify_callback)
-                                logger.debug(f"已成功启用设备心率特征通知")
-                                notify_enabled = True
-                            except Exception as notify_error:
-                                logger.warning(f"启用心率通知失败: {str(notify_error)}，无法采集真实数据")
-                                return (False, None)
-                            
-                            notify_enabled = True
-                            logger.info(f"已启用设备心率通知，开始采集数据")
-                            
-                            # 等待数据采集完成或超时
-                            timeout = 90  # 最多等待90秒
-                            start_time = time.time()
-                            
-                            # 添加保持连接功能，每5秒检查一次连接状态
-                            for _ in range(timeout // 5 + 1):
-                                # 检查是否已经超时
-                                elapsed_time = time.time() - start_time
-                                if elapsed_time >= timeout:
-                                    logger.warning(f"数据采集超时 ({timeout}秒)，未取到足够数据")
-                                    break
-                                    
-                                # 检查连接状态
-                                if not device_client.is_connected:
-                                    logger.warning("连接意外断开")
-                                    # 更新验证状态，通知前端设备连接问题
-                                    with state.verification_lock:
-                                        state.verification_results[username]['status'] = 'device_error'
-                                        state.verification_results[username]['error_message'] = '设备连接意外断开'
-                                    break
-                                    
-                                # 检查数据采集是否完成
-                                if collection_event.is_set():
-                                    logger.info("数据采集已完成")
-                                    check_event_status()  # 检查事件状态
-                                    break
-                                    
-                                # 等待5秒或直到事件被触发
-                                try:
-                                    # 使用wait_for来支持事件和超时
-                                    await asyncio.wait_for(
-                                        asyncio.create_task(asyncio.sleep(5)),  # 简单等待5秒
-                                        timeout=5.0
-                                    )
-                                    # 在等待后检查事件是否被设置
-                                    if collection_event.is_set():
-                                        logger.info("数据采集已完成（5秒检查）")
-                                        check_event_status()  # 再次检查事件状态
-                                        break
-                                    else:
-                                        # 添加调试信息，看看为什么事件没有被触发
-                                        check_event_status()
-                                except asyncio.TimeoutError:
-                                    # 超时但继续循环
-                                    pass
-                            
-                            # 数据采集完成或超时后，检查结果
-                            if not collection_event.is_set():
-                                logger.warning("验证：数据采集超时或失败，停止通知")
-                                if notify_enabled:
-                                    try:
-                                        await device_client.stop_notify(hr_char_uuid)
-                                        logger.info("验证：已停止通知")
-                                        notify_enabled = False
-                                    except Exception as e:
-                                        logger.error(f"验证：停止通知时出错: {str(e)}")
-                            else:
-                                # 数据采集成功完成，也需要停止通知
-                                logger.info("数据采集成功完成，停止通知")
-                                if notify_enabled:
-                                    try:
-                                        await device_client.stop_notify(hr_char_uuid)
-                                        logger.info("注册：数据采集完成后已停止通知")
-                                        notify_enabled = False
-                                    except Exception as e:
-                                        logger.error(f"停止通知时出错: {str(e)}")
-                            
-                            # 返回成功状态和特征UUID以便后续清理
-                            return (collection_event.is_set(), hr_char_uuid)
-                        
-                        except Exception as e:
-                            logger.error(f"验证：设备通信异常: {str(e)}")
-                            # 尝试清理连接
-                            try:
-                                if device_client and notify_enabled and hr_char_uuid:
-                                    await device_client.stop_notify(hr_char_uuid)
-                                    logger.info("验证：异常处理中已停止通知")
-                                    notify_enabled = False
-                            except Exception as cleanup_error:
-                                logger.error(f"验证：清理设备通知失败: {str(cleanup_error)}")
-                            
-                            return (False, None)  # 返回失败状态和空的UUID
 
-                                    # 添加事件状态检查函数，方便调试
-                    
-                    def check_event_status():
-                        logger.debug(f"采集事件状态: {'已触发' if collection_event.is_set() else '未触发'}")
+                    def mark_device_error(reason):
+                        """
+                        设备中途断开。这与「没采到数据」不是一回事：前者是连上了又被
+                        拔掉，后者可能只是设备没响应。单独记一档状态，前端据此区分。
+                        """
+                        with state.verification_lock:
+                            entry = state.verification_results.setdefault(username, {})
+                            entry['status'] = 'device_error'
+                            entry['error_message'] = reason
+                        state.touch_state('verification', username)
 
-                    if device_type == 'ble':
-                        # 运行异步函数采集数据
-                        loop = asyncio.new_event_loop()
-                        asyncio.set_event_loop(loop)
-                        
-                        hr_char_uuid_to_cleanup = None  # 添加一个变量来保存需要停止通知的特征UUID
-                        result = loop.run_until_complete(collect_from_device())
-                        
-                        # 获取结果，如果collect_from_device返回的是元组，表示它包含成功状态和特征UUID
-                        if isinstance(result, tuple):
-                            data_collected, hr_char_uuid_to_cleanup = result
+                    try:
+                        if device_type == 'serial':
+                            outcome = collect_via_serial(
+                                seconds=SERIAL_VERIFICATION_SECONDS,
+                                label='验证',
+                            )
                         else:
-                            data_collected = result
-                        
-                        # 创建一个临时变量来确保notify_enabled在作用域中存在
-                        current_notify_enabled = notify_enabled
-                        
-                        # 确保在关闭事件循环之前停止通知
-                        if current_notify_enabled and device_client and device_client.is_connected:
-                            if hr_char_uuid_to_cleanup:
-                                # 使用返回的hr_char_uuid直接停止通知
-                                try:
-                                    # 使用当前事件循环停止通知
-                                    loop.run_until_complete(device_client.stop_notify(hr_char_uuid_to_cleanup))
-                                    logger.info("已停止设备通知")
-                                    notify_enabled = False  # 更新原变量
-                                except Exception as e:
-                                    logger.error(f"停止设备通知时出错: {str(e)}")
-                            else:
-                                # 如果没有返回hr_char_uuid，尝试查找心率特征UUID并停止通知
-                                try:
-                                    # 获取心率特征UUID
-                                    hr_char_uuid = None
-                                    for service in device_client.services:
-                                        if is_heart_rate_service(service.uuid):
-                                            for char in service.characteristics:
-                                                if is_heart_rate_characteristic(char.uuid):
-                                                    hr_char_uuid = char.uuid
-                                                    break
-                                            if hr_char_uuid:
-                                                break
-                                    
-                                    # 停止通知
-                                    if hr_char_uuid:
-                                        try:
-                                            # 使用当前事件循环停止通知
-                                            loop.run_until_complete(device_client.stop_notify(hr_char_uuid))
-                                            logger.info("已停止设备通知")
-                                            notify_enabled = False
-                                        except Exception as e:
-                                            logger.error(f"停止设备通知时出错: {str(e)}")
-                                except Exception as e:
-                                    logger.error(f"获取心率特征UUID失败: {str(e)}")
-                        
-                        # 安全关闭事件循环
-                        try:
-                            if not loop.is_closed():
-                                # 确保所有任务都已完成
-                                pending = asyncio.all_tasks(loop) if hasattr(asyncio, 'all_tasks') else asyncio.Task.all_tasks(loop)
-                                for task in pending:
-                                    task.cancel()
-                                # 运行直到所有任务都被取消
-                                if pending:
-                                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-                                loop.close()
-                        except Exception as e:
-                            logger.error(f"关闭事件循环时出错: {str(e)}")
-                        
-                        # 设置一个标志，表示通知已停止，防止回调函数继续处理数据
-                        notify_enabled = False
-                    
-                    # 处理采集到的数据
-                    # 如果数据采集失败或不足，需要补充模拟数据
-                    if (not data_collected_successfully and not data_collected) or len(collected_data) < 60:
-                        partial_data_count = len(collected_data)
-                        
-                        # 设备没给够数据 —— 这是整条链路最后一道「补齐」出口，
-                        # 也是原先「不接设备也能验证成功」的来源。默认判失败，
-                        # 只有演示模式才允许用合成信号凑够 60 点。
-                        reason = (
-                            '设备仅提供 %d 个数据点（需要 60 个）' % partial_data_count
-                            if partial_data_count > 0 else
-                            '未采集到任何设备数据'
-                        )
-                        if not _demo_degrade(reason, demo_reasons):
-                            fail('未采集到足够的设备数据，无法完成身份验证')
-                            return
-                        
-                        needed_count = max(0, 60 - partial_data_count)
-                        if partial_data_count > 0:
-                            logger.info(f"验证：[DEMO] 已收集 {partial_data_count} 个设备数据点，补齐 {needed_count} 个合成数据点")
-                            collected_data.extend(_demo_signal_series(needed_count))
-                        else:
-                            logger.info("验证：[DEMO] 无设备数据，全部使用合成数据")
-                            collected_data = _demo_signal_series(60)
-                        
-                        logger.info(f"验证：[DEMO] 合成数据准备完成，总数据点: {len(collected_data)}")
+                            outcome = collect_via_ble(
+                                label='验证',
+                                on_device_error=mark_device_error,
+                            )
+                        # 数据不够就中止（演示模式除外）—— 这是整条链路最后一道
+                        # 「补齐」出口，见 collection.py::top_up_or_abort。
+                        # 注意顺序：降级原因由 top_up_or_abort 追加进同一个列表，
+                        # 必须在它之后再收集，否则「补过数据」不会随结果透出。
+                        outcome = top_up_or_abort(outcome, label='验证')
+                        demo_reasons.extend(outcome.demo_reasons)
+                        collected_data = outcome.points
+                    except CollectionAborted as exc:
+                        fail(exc.reason, status=exc.status)
+                        return
                     
                     # 如果成功采集到数据，则进行验证
                     if len(collected_data) > 0:
