@@ -54,6 +54,25 @@ bp = Blueprint('auth', __name__)
 
 
 # ============================================================================
+# 验证结果的「终态」
+# ============================================================================
+# 出现其中任何一个，本次验证就已经有结论，`/api/verification_status` 应当立即
+# 结束轮询并如实返回，而不是继续回答「进行中」。
+#
+# 注意 device_error 也在其中：设备中途断开时写入的就是它。它既不是 success，
+# 也不是 failed/error —— 判定表若只列后三者，它会一路落到函数末尾的「仍在进行中」
+# 分支，使接口**永远**返回 {'status': 'verifying'}，调用方因此既不失败也不超时。
+#
+# 新增任何「有结论」的状态时，只改这一处即可。
+TERMINAL_VERIFICATION_STATUSES = frozenset({
+    'success',
+    'failed',
+    'error',
+    'device_error',
+})
+
+
+# ============================================================================
 # 采集降级的统一出口
 # ============================================================================
 # 采集链路里有若干条「拿不到真实数据」的分支：设备没连上、特征不支持通知、
@@ -853,7 +872,7 @@ def verification_status():
             result = state.verification_results[username].copy()
             
             # 检查是否处于状态已确定阶段（成功或失败）
-            if result['status'] == 'success' or result['status'] == 'failed' or result['status'] == 'error':
+            if result['status'] in TERMINAL_VERIFICATION_STATUSES:
                 # 认证结果以真实比对结果为准，不做任何改写
                 demo = bool(result.get('demo'))
                 
@@ -874,7 +893,10 @@ def verification_status():
                         payload['demo'] = True
                     return jsonify(payload)
                     
-                elif result['status'] == 'failed' or result['status'] == 'error':
+                elif result['status'] in TERMINAL_VERIFICATION_STATUSES:
+                    # 除 success 外的终态按失败处理：failed / error / device_error。
+                    # 返回给调用方时统一为 'failed'，原因写在 reason 里 ——
+                    # 设备断开与判定不通过对用户是两件事，但都不该被当成"已完成"。
                     reason = result.get('error_message')
                     # 清除登录会话与验证结果
                     session.pop('pending_login', None)

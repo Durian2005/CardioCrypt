@@ -224,3 +224,47 @@ class TestLogout:
         payload = response_json(json_get(client, '/api/session'))
         assert payload['authenticated'] is False
         assert payload['pendingLogin'] is None
+
+
+# ============================================================================
+# 七、验证「终态」契约
+# ============================================================================
+class TestVerificationTerminalStates:
+    """
+    采集与推理链路可能写入多种失败状态，接口必须对**每一种**都立即给出结论。
+
+    这组断言针对的是一类很隐蔽的破坏方式：判定表逐个罗列状态名，于是新增一个
+    状态就会悄悄落到「仍在进行中」那一支 —— 调用方既不失败也不超时，
+    表现为界面永远停在「正在验证」。这里把「终态只有一处定义」钉住。
+    """
+
+    def test_terminal_set_covers_every_failure_state(self):
+        from web_auth.blueprints.auth import TERMINAL_VERIFICATION_STATUSES as terminal
+
+        assert 'success' in terminal
+        # 采集与推理链路会写入的失败终态，一个都不能少
+        assert {'failed', 'error', 'device_error'} <= terminal
+
+    def test_device_error_yields_failed_verdict(self, client, existing_user):
+        """设备中途断开必须立即出结论，而不是一直回答「进行中」。"""
+        from datetime import datetime
+
+        from web_auth import state
+
+        with client.session_transaction() as sess:
+            sess['pending_login'] = existing_user
+
+        with state.verification_lock:
+            state.verification_results[existing_user] = {
+                'status': 'device_error',
+                'timestamp': datetime.now(),
+                'error_message': '设备连接意外断开',
+            }
+        state.touch_state('verification', existing_user)
+
+        payload = response_json(json_get(client, '/api/verification_status'))
+
+        assert payload['status'] == 'failed', '终态被当成「进行中」了'
+        assert payload['reason'] == '设备连接意外断开'
+        # 结论一旦下达，本次验证的内存态就该释放
+        assert existing_user not in state.verification_results
