@@ -49,6 +49,13 @@ _state_last_active = {'registration': {}, 'verification': {}}
 _state_ts_lock = threading.Lock()
 
 
+# 进程启动时刻，用于计算运行时长（仪表盘要展示的那个「系统运行时长」）。
+#
+# 用 monotonic 而不是 time.time()：运行时长关心的是「经过了多久」，
+# 不该被系统时钟的校准或手动调整影响 —— 用 wall clock 算会出现负值。
+process_start_time = time.monotonic()
+
+
 
 def touch_state(kind, username):
     """标记某个状态条目刚刚活跃过，使其不会被回收线程清理。"""
@@ -146,6 +153,8 @@ __all__ = [
     'ble_device_session_id',
     # 运行时配置
     'admin_config',
+    # 进程信息
+    'process_start_time',
     # 闲置回收
     'touch_state', 'collect_expired_states',
 ]
