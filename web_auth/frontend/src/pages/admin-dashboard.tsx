@@ -29,7 +29,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { FadeUp, StaggerGroup, StaggerItem } from '@/components/motion'
-import { admin, session as sessionApi, type AdminUser } from '@/lib/api'
+import { admin, errorText, session as sessionApi, type AdminUser } from '@/lib/api'
 import { useSession } from '@/components/session-provider'
 import { cn, formatDateTime } from '@/lib/utils'
 
@@ -184,8 +184,8 @@ export default function AdminDashboardPage() {
         setForm(next)
         setUseCuda(cfg.system?.use_cuda !== false)
       }
-    } catch {
-      toast.error('后台数据加载失败')
+    } catch (err) {
+      toast.error(errorText(err, '后台数据加载失败'))
     } finally {
       setLoading(false)
     }
@@ -207,8 +207,8 @@ export default function AdminDashboardPage() {
       const res = await admin.updateParams(payload)
       toast.success('系统参数已保存')
       void res
-    } catch {
-      toast.error('参数保存失败')
+    } catch (err) {
+      toast.error(errorText(err, '参数保存失败'))
     } finally {
       setSaving(false)
     }
@@ -237,8 +237,8 @@ export default function AdminDashboardPage() {
       setConfirmOpen(false)
       setPendingDelete([])
       await load()
-    } catch {
-      toast.error('删除失败')
+    } catch (err) {
+      toast.error(errorText(err, '删除失败'))
     }
   }
 

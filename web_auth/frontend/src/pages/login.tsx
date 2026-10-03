@@ -8,7 +8,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Input, Label } from '@/components/ui/input'
 import { FadeUp, StaggerGroup, StaggerItem } from '@/components/motion'
 import { EcgWave } from '@/components/visuals/ecg-wave'
-import { postFormRaw } from '@/lib/api'
+import { errorText, postFormRaw } from '@/lib/api'
 
 /**
  * 登录页
@@ -49,8 +49,8 @@ export default function LoginPage() {
         // 停留在 /login 视为失败
         toast.error('未找到该用户，请检查用户名或先注册')
       }
-    } catch {
-      toast.error('网络请求失败，请确认后端服务已启动')
+    } catch (err) {
+      toast.error(errorText(err, '网络请求失败，请确认后端服务已启动'))
     } finally {
       setSubmitting(false)
     }

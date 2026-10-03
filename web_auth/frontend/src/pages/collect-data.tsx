@@ -22,7 +22,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FadeUp } from '@/components/motion'
 import { EcgWave } from '@/components/visuals/ecg-wave'
-import { device, registration, type DeviceItem } from '@/lib/api'
+import { device, errorText, registration, type DeviceItem } from '@/lib/api'
 import { useSession } from '@/components/session-provider'
 import { cn } from '@/lib/utils'
 
@@ -100,8 +100,9 @@ export default function CollectDataPage() {
       } else {
         toast.error(res.error || '设备扫描失败')
       }
-    } catch {
-      toast.error('扫描请求失败，请确认后端服务可用')
+    } catch (err) {
+      // 超时（BLE 发现最慢）与后端直接拒绝，提示要能区分
+      toast.error(errorText(err, '扫描请求失败，请确认后端服务可用'))
     } finally {
       setScanning(false)
     }
@@ -132,8 +133,8 @@ export default function CollectDataPage() {
         toast.error(res.error || '设备连接失败', { id: t })
         setStep('scan')
       }
-    } catch {
-      toast.error('连接请求失败', { id: t })
+    } catch (err) {
+      toast.error(errorText(err, '连接请求失败'), { id: t })
       setStep('scan')
     }
   }
@@ -168,10 +169,13 @@ export default function CollectDataPage() {
         setCollectStatus('数据处理中…')
         pollStatus()
       }
-    } catch {
-      toast.error('采集请求异常')
+    } catch (err) {
+      // 采集接口是长耗时写请求：超时（2 分钟）与后端报错的原因都写在这里，
+      // 直接丢弃它换成「采集请求异常」会让用户不知道该重试还是该查后端
+      const reason = errorText(err, '采集请求异常，请重试')
+      toast.error(reason)
       setCollecting(false)
-      setCollectStatus('采集异常，请重试')
+      setCollectStatus(reason)
     }
   }, [username, deviceType])
 

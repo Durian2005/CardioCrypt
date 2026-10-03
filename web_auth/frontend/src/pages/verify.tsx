@@ -23,7 +23,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { FadeUp } from '@/components/motion'
 import { EcgWave } from '@/components/visuals/ecg-wave'
-import { device, verification, type DeviceItem } from '@/lib/api'
+import { device, errorText, verification, type DeviceItem } from '@/lib/api'
 import { useSession } from '@/components/session-provider'
 import { cn } from '@/lib/utils'
 
@@ -75,8 +75,9 @@ export default function VerifyPage() {
       } else {
         toast.error(res.error || '扫描失败')
       }
-    } catch {
-      toast.error('扫描请求失败')
+    } catch (err) {
+      // 超时与「后端拒绝」要给不同的提示，所以照实显示封装里的原因
+      toast.error(errorText(err, '扫描请求失败'))
     } finally {
       setScanning(false)
     }
@@ -102,8 +103,8 @@ export default function VerifyPage() {
       }
       setActiveName((d.name || addr) as string)
       toast.success('设备已连接，开始身份验证', { id: t })
-    } catch {
-      toast.error('连接请求失败', { id: t })
+    } catch (err) {
+      toast.error(errorText(err, '连接请求失败'), { id: t })
       return
     }
 

@@ -8,7 +8,7 @@ import { Input, Label } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { FadeUp, Magnetic, StaggerGroup, StaggerItem } from '@/components/motion'
 import { useSession } from '@/components/session-provider'
-import { postFormRaw } from '@/lib/api'
+import { errorText, postFormRaw } from '@/lib/api'
 
 /**
  * 管理员登录
@@ -46,8 +46,8 @@ export default function AdminLoginPage() {
       } else {
         toast.error('账号或密码错误')
       }
-    } catch {
-      toast.error('网络请求失败，请确认后端服务已启动')
+    } catch (err) {
+      toast.error(errorText(err, '网络请求失败，请确认后端服务已启动'))
     } finally {
       setSubmitting(false)
     }
