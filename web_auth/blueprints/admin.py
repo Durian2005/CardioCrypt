@@ -167,6 +167,50 @@ def admin_logout():
     return redirect(url_for('auth.index'))
 
 
+def _purge_user(username):
+    """
+    彻底清除一个用户：模型文件 + 数据库记录 + 进程内状态。
+
+    单个删除与批量删除原先各写一遍这五步（模型文件 → users → auth_history
+    → 注册态 → 验证态），逐字重复约 28 行。重复的代价不只是行数：
+    漏掉其中任何一步都会留下「数据库已删、文件还在」这类不一致状态，
+    而两处不会同时被想起 —— 所以收口成唯一的删除入口。
+
+    返回 True 表示该用户此前确实存在（调用方据此区分「删除成功」与
+    「用户不存在」）。模型文件删除失败不算失败：文件残留不影响
+    账号可用性，DB 记录才是判断用户是否存在的依据。
+    """
+    user = mongo.db.users.find_one({'username': username})
+    if not user:
+        return False
+
+    model_path = user.get('model_path')
+    if model_path:
+        try:
+            if os.path.exists(model_path):
+                os.remove(model_path)
+                logger.info(f"已删除用户 {username} 的模型文件: {model_path}")
+        except Exception as e:
+            # 文件删不掉（如被占用）只记警告：账号本身已从库中移除，
+            # 不该因此把整次删除报成失败。
+            logger.warning(f"删除用户 {username} 的模型文件失败: {e}")
+
+    mongo.db.users.delete_one({'username': username})
+    mongo.db.auth_history.delete_many({'username': username})
+
+    # 清理进程内的共享状态，避免留下已删用户的采集/验证记录
+    with state.registration_lock:
+        state.current_registration_data.pop(username, None)
+    with state.verification_lock:
+        state.verification_results.pop(username, None)
+    # 时间戳也一并清掉，否则回收线程会对着早已不存在的条目空跑到 TTL
+    state.forget_state('registration', username)
+    state.forget_state('verification', username)
+
+    logger.info(f"用户 {username} 及其所有相关数据已成功删除")
+    return True
+
+
 # 删除用户
 @bp.route('/manage/delete_user/<username>', methods=['POST'])
 @admin_required
@@ -176,49 +220,16 @@ def delete_user(username):
         if username == ADMIN_USERNAME:
             flash('不能删除管理员用户')
             return redirect(url_for('admin.admin_dashboard'))
-        
-        # 获取用户信息
-        user = mongo.db.users.find_one({'username': username})
-        if not user:
+
+        if _purge_user(username):
+            flash(f'用户 {username} 已成功删除')
+        else:
             flash(f'用户 {username} 不存在')
-            return redirect(url_for('admin.admin_dashboard'))
-        
-        # 删除用户的模型文件
-        if 'model_path' in user and user['model_path']:
-            try:
-                if os.path.exists(user['model_path']):
-                    os.remove(user['model_path'])
-                    logger.info(f"已删除用户 {username} 的模型文件: {user['model_path']}")
-            except Exception as e:
-                logger.warning(f"删除用户 {username} 的模型文件失败: {e}")
-        
-        # 删除数据库中的用户数据
-        # 删除用户基本信息
-        mongo.db.users.delete_one({'username': username})
-        
-        # 删除用户的认证历史记录
-        mongo.db.auth_history.delete_many({'username': username})
-        
-        # 删除用户相关的其他数据（如果有的话）
-        # 例如：用户的数据采集记录、验证记录等
-        
-        # 清理内存中的相关数据
-        with state.registration_lock:
-            if username in state.current_registration_data:
-                del state.current_registration_data[username]
-        
-        # 清理验证结果
-        with state.verification_lock:
-            if username in state.verification_results:
-                del state.verification_results[username]
-        
-        logger.info(f"用户 {username} 及其所有相关数据已成功删除")
-        flash(f'用户 {username} 已成功删除')
-        
+
     except Exception as e:
         logger.error(f"删除用户 {username} 失败: {e}")
         flash(f'删除用户失败: {str(e)}')
-    
+
     return redirect(url_for('admin.admin_dashboard'))
 
 
@@ -227,72 +238,39 @@ def delete_user(username):
 @admin_required
 def batch_delete_users():
     try:
-        # 获取要删除的用户名列表
         usernames = request.form.getlist('usernames[]')
-        
+
         if not usernames:
             flash('请选择要删除的用户')
             return redirect(url_for('admin.admin_dashboard'))
-        
+
         # 安全检查：防止删除管理员用户
         if ADMIN_USERNAME in usernames:
             flash('不能删除管理员用户')
             return redirect(url_for('admin.admin_dashboard'))
-        
+
         deleted_count = 0
         failed_count = 0
-        
+
         for username in usernames:
             try:
-                # 获取用户信息
-                user = mongo.db.users.find_one({'username': username})
-                if not user:
+                if _purge_user(username):
+                    deleted_count += 1
+                else:
                     failed_count += 1
-                    continue
-                
-                # 删除用户的模型文件
-                if 'model_path' in user and user['model_path']:
-                    try:
-                        if os.path.exists(user['model_path']):
-                            os.remove(user['model_path'])
-                            logger.info(f"已删除用户 {username} 的模型文件: {user['model_path']}")
-                    except Exception as e:
-                        logger.warning(f"删除用户 {username} 的模型文件失败: {e}")
-                
-                # 删除数据库中的用户数据
-                # 删除用户基本信息
-                mongo.db.users.delete_one({'username': username})
-                
-                # 删除用户的认证历史记录
-                mongo.db.auth_history.delete_many({'username': username})
-                
-                # 清理内存中的相关数据
-                with state.registration_lock:
-                    if username in state.current_registration_data:
-                        del state.current_registration_data[username]
-                
-                # 清理验证结果
-                with state.verification_lock:
-                    if username in state.verification_results:
-                        del state.verification_results[username]
-                
-                deleted_count += 1
-                logger.info(f"用户 {username} 已成功删除")
-                
             except Exception as e:
                 logger.error(f"删除用户 {username} 失败: {e}")
                 failed_count += 1
-        
-        # 显示删除结果
+
         if deleted_count > 0:
             flash(f'成功删除 {deleted_count} 个用户')
         if failed_count > 0:
             flash(f'删除失败 {failed_count} 个用户')
-        
+
         logger.info(f"批量删除完成：成功 {deleted_count} 个，失败 {failed_count} 个")
-        
+
     except Exception as e:
         logger.error(f"批量删除用户失败: {e}")
         flash(f'批量删除失败: {str(e)}')
-    
+
     return redirect(url_for('admin.admin_dashboard'))

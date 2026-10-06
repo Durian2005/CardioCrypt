@@ -143,6 +143,10 @@ def create_app(config_overrides=None):
     # __main__ 分支不会执行 —— 而 username 的唯一索引正是防止重名的唯一保障。
     core.init_system_on_startup()
 
+    # 闲置状态回收线程同理，挪进工厂：导入本模块不该有起线程的副作用
+    # （测试会反复导入，靠幂等标记保证只会起一个）。
+    state.start_state_cleanup_thread()
+
     return app
 
 

@@ -46,6 +46,20 @@ def is_heart_rate_characteristic(char_uuid):
             char_uuid.lower().endswith('2a37'))
 
 
+def filter_signal_arrays(signals):
+    """
+    从采集结果里挑出真正的数组，丢掉标量/异常元素。
+
+    采集层交回来的 `points` 理论上每个都是 `np.ndarray`，但设备异常时
+    可能混入标量，直接 `np.concatenate` 会抛 "zero-dimensional arrays
+    cannot be concatenated"。这里先滤一遍，让调用方拿到的都是可拼接的数组。
+
+    这段过滤原先在 `blueprints/auth.py` 与 `blueprints/device.py` 各写一遍
+    （连注释都逐字相同），抽到算法侧工具模块，两端共用同一份判定。
+    """
+    return [s for s in signals if len(s.shape) >= 1]
+
+
 def heart_rate_to_ecg(heart_rate, rr_interval=None):
     """
     根据心率生成模拟ECG信号

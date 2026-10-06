@@ -73,6 +73,32 @@ except ImportError as e:
 
 
 
+# 动态配置不可用时的兜底默认值。
+#
+# 原来这份字典在本文件里完整写了两遍（`SYSTEM_AVAILABLE` 为假的分支一次、
+# 读取抛异常的分支又一次），14 行逐字重复 —— 改一处漏一处的典型。
+#
+# 做成**工厂函数**而不是模块级常量：返回值会被 `state.admin_config` 持有并
+# 整体替换，若返回同一个字典对象，两处调用方就会互相污染对方的修改。
+def _default_app_config():
+    """返回一份全新的默认配置字典（调用方可以安全修改）。"""
+    return {
+        'model_threshold': 0.8,
+        'alpha': 0.6,
+        'beta': 0.4,
+        'verification_time': 30,
+        'min_verification_success': 2,
+        'total_verification_count': 3,
+        'device_connection_timeout': 10.0,
+        'device_scan_timeout': 5.0,
+        'training_epochs': 50,
+        'training_learning_rate': 0.001,
+        'training_batch_size': 32,
+        'system_use_cuda': True,
+        'system_cuda_device': 0,
+    }
+
+
 def client_ip():
     """取客户端 IP，用作限流的键。"""
     return (request.remote_addr or 'unknown').strip()
@@ -82,22 +108,8 @@ def client_ip():
 def load_app_config():
     """从动态配置加载应用配置参数"""
     if not SYSTEM_AVAILABLE:
-        # 如果系统不可用，使用默认配置
-        return {
-            'model_threshold': 0.8,
-            'alpha': 0.6,
-            'beta': 0.4,
-            'verification_time': 30,
-            'min_verification_success': 2,
-            'total_verification_count': 3,
-            'device_connection_timeout': 10.0,
-            'device_scan_timeout': 5.0,
-            'training_epochs': 50,
-            'training_learning_rate': 0.001,
-            'training_batch_size': 32,
-            'system_use_cuda': True,
-            'system_cuda_device': 0
-        }
+        # 算法层不可用：没有 dynamic_config 可读，直接用默认值
+        return _default_app_config()
     
     try:
         # 从动态配置中加载参数
@@ -129,22 +141,8 @@ def load_app_config():
         return config
     except Exception as e:
         logger.error(f"加载动态配置失败: {e}")
-        # 如果配置加载失败，使用默认值
-        return {
-            'model_threshold': 0.8,
-            'alpha': 0.6,
-            'beta': 0.4,
-            'verification_time': 30,
-            'min_verification_success': 2,
-            'total_verification_count': 3,
-            'device_connection_timeout': 10.0,
-            'device_scan_timeout': 5.0,
-            'training_epochs': 50,
-            'training_learning_rate': 0.001,
-            'training_batch_size': 32,
-            'system_use_cuda': True,
-            'system_cuda_device': 0
-        }
+        # 配置读取失败：同样回落到默认值，但记 error 让日志里查得到
+        return _default_app_config()
 
 
 # 管理员访问装饰器

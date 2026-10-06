@@ -9,6 +9,8 @@ pytest 共享夹具
    `web_auth/app.py` 在模块加载阶段就会读取 `MONGO_URI` / `FLASK_SECRET_KEY` 等，
    并立即创建索引、启动闲置状态回收线程。所以本文件顶部的 `os.environ` 赋值是
    **顺序敏感**的，不能改写成 fixture —— fixture 执行时模块早已导入完毕。
+   （回收线程现已由 `create_app()` 显式启动而非导入时自启，但 `create_app()`
+   仍在本文件之后被调用，顺序约束不变。）
 
 2. **测试库名必须带 `pytest` 字样。**
    测试结束时会把整个库 drop 掉。库名检查是一道保险，避免误删开发库

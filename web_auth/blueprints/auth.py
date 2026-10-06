@@ -44,6 +44,7 @@ from web_auth.services.collection import (
     collect_via_serial,
     top_up_or_abort,
 )
+from web_auth.services.signals import filter_signal_arrays
 
 bp = Blueprint('auth', __name__)
 
@@ -67,18 +68,29 @@ TERMINAL_VERIFICATION_STATUSES = frozenset({
 })
 
 
+#: 验证时喂给模型的时间步长（补齐/截断到这个长度再 reshape 成 [1, L, 1]）。
+#:
+#: 刻意独立于 `device.py::TRAIN_SEQUENCE_LENGTH`（那里是 10）声明：
+#: 两者看着像同一个东西，其实是两条独立约束 —— 训练侧用它决定模型结构，
+#: 本侧只是按「模型期望的输入长度」对齐采集到的数据。写死 600 是既有行为，
+#: 此处只把它变成具名常量，**取值不变**；将来若模型输入长度变化，
+#: 改这里的同时需要确认训练侧是否也要跟着改。
+VERIFY_SEQUENCE_LENGTH = 600
+
+
 # ============================================================================
-# 采集降级的统一出口
+# 采集降级与「终态」的关系
 # ============================================================================
-# 采集链路里有若干条「拿不到真实数据」的分支：设备没连上、特征不支持通知、
-# 采到的点数不够、串口抛异常。这些分支原来各自直接生成一段合成信号继续往下走，
-# 于是「没采到数据」和「采到了数据」在结果上没有任何区别 —— 不接设备点验证，
-# 也能得到一次「验证成功」。
+# 采集链路里有若干条「拿不到真实数据」的分支（设备没连上、特征不支持通知、
+# 采到的点数不够、串口抛异常）。这些分支统一由 `web_auth/demo.py` 裁决：
+# **默认不允许模拟**，采集不到就如实失败；只有显式打开 `DEMO_MODE` 才允许用
+# 合成信号把流程走完，且每一次降级都留痕。实现见 `services/collection.py`。
 #
-# 现在把这件事收口到 web_auth/demo.py：**默认不允许模拟**，采集不到就如实失败；
-# 只有显式打开 DEMO_MODE 才允许用合成信号把流程走完，且每一次降级都留痕。
+# 本模块只负责两件事：
+#   1. 把采集结果映射成本模块的状态结构（验证侧写 `verification_results`）；
+#   2. 用上面那个 `TERMINAL_VERIFICATION_STATUSES` 判定「有结论了没有」。
 #
-# 注意这里改的是「数据从哪来」，不是「判定怎么下」—— 合成信号照样要过模型
+# 注意降级改的是「数据从哪来」，不是「判定怎么下」—— 合成信号照样要过模型
 # 比对，照样可能不通过。判定结论的唯一来源始终是算法输出。
 
 
@@ -226,11 +238,9 @@ def start_verification():
     # 启动验证线程
     def verify_thread(username, device_info):
         try:
-            # 获取全局函数引用
-            
             # 开始验证过程
             logger.info(f"开始为用户 {username} 验证身份")
-            
+
             # 初始化验证数据结构（如果不存在）
             with state.verification_lock:
                 if username not in state.verification_results:
@@ -239,8 +249,8 @@ def start_verification():
                         'timestamp': datetime.now()
                     }
             state.touch_state('verification', username)
-            
-                        # 本次验证中所有「采集降级」的原因，随结果一起透出给前端
+
+            # 本次验证中所有「采集降级」的原因，随结果一起透出给前端
             demo_reasons = []
             
             def fail(reason, status='failed'):
@@ -329,54 +339,46 @@ def start_verification():
                     # 如果成功采集到数据，则进行验证
                     if len(collected_data) > 0:
                         logger.info(f"验证：使用 {len(collected_data)} 个数据点进行身份验证")
-                        
+
                         # 处理采集到的数据，用于验证
                         try:
-                            # 确保collected_data中的每个元素都是数组
-                            all_signals = []
-                            for signal in collected_data:
-                                if len(signal.shape) >= 1:  # 确认是数组而非标量
-                                    all_signals.append(signal)
-                            
+                            # 滤掉标量，只留可拼接的数组
+                            all_signals = filter_signal_arrays(collected_data)
+
                             # 只有当有有效数据时才处理
                             if all_signals:
                                 # 拼接所有采集的信号
                                 signal_data = np.concatenate(all_signals)
-                                
-                                # 将其转换为模型可接受的格式
-                                if SYSTEM_AVAILABLE:
-                                    # 设置序列长度为600
-                                    sequence_length = 600
-                                    
-                                    # 确保数据长度适合模型输入
-                                    data_length = len(signal_data)
-                                    if data_length < sequence_length:
-                                        # 填充
-                                        padded_data = np.zeros(sequence_length)
-                                        padded_data[:data_length] = signal_data
-                                        signal_data = padded_data
-                                    else:
-                                        # 截断
-                                        signal_data = signal_data[:sequence_length]
-                                    
-                                    # 重塑为模型需要的形状 [1, sequence_length, 1]
-                                    signal_data = signal_data.reshape(1, sequence_length, 1)
-                                    
-                                    # 调用身份验证函数
-                                    auth_result = authenticate_single_signal(model, signal_data, threshold=state.admin_config['model_threshold'])
-                                    
-                                    # 判定结论只来自算法输出，这里不做任何改写
-                                    passed = bool(auth_result['authenticated'])
-                                    finish(passed, score=auth_result['score'])
-                                    logger.info(
-                                        "用户 %s 验证%s，得分: %.4f",
-                                        username, '成功' if passed else '失败', auth_result['score'],
-                                    )
+
+                                # 将其转换为模型可接受的格式：
+                                # 长度不足则补零、超出则截断，末了重塑成
+                                # [1, sequence_length, 1]
+                                # 注意这里不再判断 SYSTEM_AVAILABLE —— 它在外层
+                                # 已经为真（否则本分支根本进不来），重复判断会让
+                                # 读者误以为存在算法层失效的第三条路径。
+                                sequence_length = VERIFY_SEQUENCE_LENGTH
+                                data_length = len(signal_data)
+                                if data_length < sequence_length:
+                                    padded_data = np.zeros(sequence_length)
+                                    padded_data[:data_length] = signal_data
+                                    signal_data = padded_data
                                 else:
-                                    # 算法层不可用（导入失败），没有比对能力，
-                                    # 也就没有任何依据可以判定通过。
-                                    fail('算法层不可用，无法进行特征比对', status='error')
-                                    return
+                                    signal_data = signal_data[:sequence_length]
+
+                                signal_data = signal_data.reshape(1, sequence_length, 1)
+
+                                # 调用身份验证函数
+                                # 判定结论只来自算法输出，这里不做任何改写
+                                auth_result = authenticate_single_signal(
+                                    model, signal_data,
+                                    threshold=state.admin_setting('model_threshold', 0.8),
+                                )
+                                passed = bool(auth_result['authenticated'])
+                                finish(passed, score=auth_result['score'])
+                                logger.info(
+                                    "用户 %s 验证%s，得分: %.4f",
+                                    username, '成功' if passed else '失败', auth_result['score'],
+                                )
                             else:
                                 # 采集到的数据全都不是有效数组
                                 fail('采集到的信号无效，无法完成身份验证')
@@ -405,7 +407,14 @@ def start_verification():
             state.touch_state('verification', username)
     
     # 启动验证线程，传入设备信息
-    thread = threading.Thread(target=verify_thread, args=(username, device_info), daemon=True)
+    # 刻意起名：验证要跑几十秒到几分钟，出问题时线程名是日志里唯一能
+    # 定位到「是谁的验证卡住了」的线索（栈里 `Thread-N` 只给编号）
+    thread = threading.Thread(
+        target=verify_thread,
+        args=(username, device_info),
+        daemon=True,
+        name=f'verify-{username}',
+    )
     thread.start()
     
     return jsonify({'success': True})

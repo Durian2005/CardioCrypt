@@ -22,6 +22,7 @@
 """
 
 import asyncio
+import contextlib
 import threading
 import time
 
@@ -42,6 +43,7 @@ __all__ = [
     'TARGET_DATA_POINTS',
     'collect_via_ble',
     'collect_via_serial',
+    'new_event_loop',
     'top_up_or_abort',
 ]
 
@@ -497,6 +499,42 @@ def _find_heart_rate_characteristic(device_client):
                 if is_heart_rate_characteristic(char.uuid):
                     return char.uuid
     return None
+
+
+@contextlib.contextmanager
+def new_event_loop(label):
+    """
+    建一个事件循环，用完保证关闭。
+
+    bleak 的异步 API 要在自己的循环里跑，本项目三处（BLE 扫描、连接、
+    采集）都是 `new_event_loop()` + `run_until_complete()`。原先只有采集这处
+    做了收尾，扫描与连接建完就不管了 —— 每次调用泄漏一个循环对象及其
+    持有的 selector/epoll 句柄。反复扫描设备时这些句柄会一直累积，
+    在 Windows 上表现为句柄数缓慢上涨。
+
+    与 `_close_loop` 的区别：那处还要停设备通知、取消残留任务，属于采集
+    专属收尾；这里只管循环自身的开关，供没有设备连接的场合使用。
+    """
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        yield loop
+    finally:
+        try:
+            if not loop.is_closed():
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(
+                        asyncio.gather(*pending, return_exceptions=True)
+                    )
+                loop.close()
+        except Exception as exc:
+            logger.error("%s：关闭事件循环时出错: %s", label, exc)
+        finally:
+            # 让下一次 asyncio 调用能重新建循环，而不是拿到这个已关闭的
+            asyncio.set_event_loop(None)
 
 
 # ---------------------------------------------------------------------------

@@ -48,6 +48,18 @@ _state_last_active = {'registration': {}, 'verification': {}}
 
 _state_ts_lock = threading.Lock()
 
+# 回收线程的幂等标记（见 start_state_cleanup_thread）
+_cleanup_thread_started = False
+_cleanup_thread_lock = threading.Lock()
+
+
+# 管理员运行时配置：由 create_app() 在启动时用 core.load_app_config() 填充，
+# 之后管理后台的「参数修改」会重新加载它。
+#
+# 刻意放在这里（与其他共享状态同处一个区块）：`admin_setting()` 要读它，
+# 定义在本文件靠后会让依赖顺序与阅读顺序相反。
+admin_config = None
+
 
 # 进程启动时刻，用于计算运行时长（仪表盘要展示的那个「系统运行时长」）。
 #
@@ -65,6 +77,36 @@ def touch_state(kind, username):
         bucket = _state_last_active.get(kind)
         if bucket is not None:
             bucket[username] = time.monotonic()
+
+
+def forget_state(kind, username):
+    """
+    主动丢弃某个状态条目及其活跃时间戳。
+
+    管理员删除用户时调用：数据条目与时间戳必须成对清除，否则回收线程会
+    对着早已删除的条目空跑到 TTL 结束。数据删除由调用方在各自的业务锁内
+    完成，本函数只负责时间戳这一侧。
+    """
+    with _state_ts_lock:
+        bucket = _state_last_active.get(kind)
+        if bucket is not None:
+            bucket.pop(username, None)
+
+
+def admin_setting(key, default=None):
+    """
+    读取管理员运行时配置里的一项。
+
+    统一这个口径的原因：`admin_config` 由 `create_app()` 在启动时填充，
+    正常情况下不会是 `None`；但它也可能被 `load_app_config()` 整体替换，
+    而各调用方原先各写一种取值方式，其中 `device.py` 用的
+    `cfg['k'] if 'k' in cfg else default` 在 `cfg` 为 `None` 时会直接
+    `TypeError`（`'k' in None`）。这里一并挡掉。
+    """
+    config = admin_config
+    if not isinstance(config, dict):
+        return default
+    return config.get(key, default)
 
 
 
@@ -107,8 +149,22 @@ def collect_expired_states(now=None):
 
 
 
-def _start_state_cleanup_thread():
-    """启动守护线程，周期性回收闲置状态。"""
+def start_state_cleanup_thread():
+    """
+    启动守护线程，周期性回收闲置状态。**幂等**：重复调用不会起第二个线程。
+
+    为什么不在模块导入时启动（原先那样做）：
+    `import web_auth.state` 本身不该有副作用 —— 它会被测试夹具、脚本、
+    `core.py` 等多处导入，每次导入都起一个守护线程，测试里反复重载模块
+    就会叠加出多个回收线程。改成由 `create_app()` 显式调用后，
+    启动时机与同样依赖 app 上下文的 `init_system_on_startup()` 一致。
+    """
+    global _cleanup_thread_started
+    with _cleanup_thread_lock:
+        if _cleanup_thread_started:
+            return
+        _cleanup_thread_started = True
+
     def _loop():
         while True:
             time.sleep(STATE_CLEANUP_INTERVAL)
@@ -124,10 +180,6 @@ def _start_state_cleanup_thread():
     )
 
 
-
-_start_state_cleanup_thread()
-
-
 # 单一设备连接
 ble_device_client = None  # 当前连接的设备客户端
 
@@ -136,10 +188,6 @@ ble_device_address = None  # 当前连接的设备地址
 ble_device_name = None  # 当前连接的设备名称
 
 ble_device_session_id = None  # 当前会话ID
-
-# 管理员运行时配置：由 create_app() 在启动时用 core.load_app_config() 填充，
-# 之后管理后台的「参数修改」会重新加载它。
-admin_config = None
 
 __all__ = [
     # 注册采集进度
@@ -152,9 +200,10 @@ __all__ = [
     'ble_device_client', 'ble_device_address', 'ble_device_name',
     'ble_device_session_id',
     # 运行时配置
-    'admin_config',
+    'admin_config', 'admin_setting',
     # 进程信息
     'process_start_time',
     # 闲置回收
-    'touch_state', 'collect_expired_states',
+    'touch_state', 'forget_state', 'collect_expired_states',
+    'start_state_cleanup_thread',
 ]

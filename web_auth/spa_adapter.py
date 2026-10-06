@@ -30,6 +30,28 @@ logger = logging.getLogger('web_auth.spa')
 # 前端构建产物目录
 DIST_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', 'dist')
 
+# 未构建前端时统一返回的提示页。
+# 原来这段 HTML 在 `spa_root` 与 `_serve_index` 里各写了一份（逐字相同），
+# 共用这一个常量后不会出现「改了一处、另一处还是旧文案」。
+_NOT_BUILT_HTML = (
+    "<h1>前端尚未构建</h1>"
+    "<p>请在 web_auth/frontend 目录执行 "
+    "<code>npm install && npm run build</code></p>"
+)
+
+
+def _serve_index():
+    """
+    返回前端入口页；产物不存在时给出明确提示。
+
+    刻意定义在所有引用点之前：`spa_fallback_named` 与 `spa_not_found` 都要用
+    它，原先定义在最后、靠 Python 的运行时名字解析才能工作，读起来像 bug。
+    """
+    index = os.path.join(DIST_DIR, 'index.html')
+    if not os.path.exists(index):
+        return _NOT_BUILT_HTML, 404
+    return send_from_directory(DIST_DIR, 'index.html')
+
 
 def register_spa(app, mongo, admin_required):
     """
@@ -164,14 +186,7 @@ def register_spa(app, mongo, admin_required):
     @app.route('/app/<path:path>')
     def spa_root(path):
         """便于对比调试：/app 前缀访问新前端。"""
-        index = os.path.join(DIST_DIR, 'index.html')
-        if not os.path.exists(index):
-            return (
-                "<h1>前端尚未构建</h1>"
-                "<p>请在 web_auth/frontend 目录执行 <code>npm install && npm run build</code></p>",
-                404,
-            )
-        return send_from_directory(DIST_DIR, 'index.html')
+        return _serve_index()
 
     # 前端路由清单：这些路径交给 SPA 渲染
     SPA_ROUTES = {
@@ -191,27 +206,15 @@ def register_spa(app, mongo, admin_required):
 
     @app.errorhandler(404)
     def spa_not_found(error):
-        from flask import request as _req
-        path = _req.path or ''
+        path = request.path or ''
         if (
-            _req.method in ('GET', 'HEAD')
+            request.method in ('GET', 'HEAD')
             and not path.startswith(_BACKEND_PREFIXES)
             and '.' not in os.path.basename(path)
         ):
-            index = os.path.join(DIST_DIR, 'index.html')
-            if os.path.exists(index):
-                return send_from_directory(DIST_DIR, 'index.html')
+            if os.path.exists(os.path.join(DIST_DIR, 'index.html')):
+                return _serve_index()
         return error, 404
-
-    def _serve_index():
-        index = os.path.join(DIST_DIR, 'index.html')
-        if not os.path.exists(index):
-            return (
-                "<h1>前端尚未构建</h1>"
-                "<p>请在 web_auth/frontend 目录执行 <code>npm install && npm run build</code></p>",
-                404,
-            )
-        return send_from_directory(DIST_DIR, 'index.html')
 
     # 暴露给外部使用（由 switch_frontend 调用）
     app.config['SPA_ROUTES'] = SPA_ROUTES
