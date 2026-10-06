@@ -4,25 +4,36 @@ import { toast } from 'sonner'
 import { AnimatePresence, motion } from 'framer-motion'
 import {
   AlertTriangle,
-  Bluetooth,
-  Cable,
   CheckCircle2,
   ChevronRight,
   Cpu,
   Plug,
-  Radio,
   RefreshCw,
   Search,
   Waves,
-  XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Skeleton } from '@/components/ui/skeleton'
 import { FadeUp } from '@/components/motion'
 import { EcgWave } from '@/components/visuals/ecg-wave'
-import { device, errorText, registration, type DeviceItem } from '@/lib/api'
+import {
+  DemoModeBanner,
+  DemoSkipButton,
+  DeviceListSkeleton,
+  DeviceRow,
+  DeviceTypeTabs,
+  ScanButton,
+} from '@/components/device'
+import { useDeviceScan, deviceAddress } from '@/hooks/useDeviceScan'
+import { usePoll } from '@/hooks/usePoll'
+import {
+  device,
+  errorText,
+  registration,
+  type DeviceItem,
+  type RegistrationState,
+} from '@/lib/api'
 import { useSession } from '@/components/session-provider'
 import { cn } from '@/lib/utils'
 
@@ -45,18 +56,26 @@ type StepKey = (typeof STEPS)[number]['key']
  * 刻意用白名单，而不是逐个罗列失败态（failed / error / device_error）：后端每新增
  * 一个终态，黑名单写法都会静默漏掉它 —— 表现为界面永远停在「正在采集」，既不
  * 出结果也不报错。白名单天然免疫这种情况。
- * 空串是为「响应里没有 status 字段」留的，此时继续轮询。
+ *
+ * 元素类型取 `RegistrationState`（而非 string），这样后端新增状态时，
+ * 只要把它加进 `api.ts` 的联合类型而忘了处理，这里就会**编译报错** ——
+ * 比运行时才发现「界面卡住」早得多。
  */
-const ACTIVE_REGISTRATION_STATES = new Set([
+const ACTIVE_REGISTRATION_STATES: ReadonlySet<string> = new Set<RegistrationState>([
   'collecting',
   'training',
   'verifying',
   'pending',
-  '',
 ])
+
+/** 轮询间隔 */
+const POLL_INTERVAL_MS = 1500
 
 /** 轮询总时长上限：采集约 1 分钟 + 训练数分钟，超出说明后端线程已异常。 */
 const POLL_TIMEOUT_MS = 15 * 60 * 1000
+
+/** 连接成功后延迟进入采集的时长（毫秒） */
+const CONNECT_DELAY_MS = 700
 
 /* ---------------- 页面 ---------------- */
 
@@ -69,9 +88,8 @@ export default function CollectDataPage() {
   const demoMode = info.demoMode === true
 
   const [step, setStep] = useState<StepKey>('scan')
-  const [deviceType, setDeviceType] = useState<'all' | 'ble' | 'serial'>('all')
-  const [scanning, setScanning] = useState(false)
-  const [devices, setDevices] = useState<DeviceItem[]>([])
+  const { deviceType, setDeviceType, scanning, devices, onScan, reset: resetScan } =
+    useDeviceScan('未发现可用设备，请确认设备已开启并处于配对模式')
   const [connected, setConnected] = useState<DeviceItem | null>(null)
 
   const [collecting, setCollecting] = useState(false)
@@ -81,63 +99,67 @@ export default function CollectDataPage() {
   /** 本次注册是否基于合成数据（由后端在结果里带回来） */
   const [demoResult, setDemoResult] = useState(false)
 
-  const pollRef = useRef<number | null>(null)
+  /** 连接成功后延迟进入采集的定时器；卸载时必须清掉，
+   *  否则用户在 700ms 内离开页面，采集请求仍会被发起。 */
+  const connectTimerRef = useRef<number | null>(null)
 
-  /* ---------- 扫描设备 ---------- */
-  const onScan = async () => {
-    setScanning(true)
-    setDevices([])
-    try {
-      const res = await device.scan(deviceType)
-      if (res.success) {
-        const list = res.devices ?? []
-        setDevices(list)
-        if (list.length === 0) {
-          toast.info('未发现可用设备，请确认设备已开启并处于配对模式')
-        } else {
-          toast.success(`发现 ${list.length} 个设备`)
-        }
-      } else {
-        toast.error(res.error || '设备扫描失败')
-      }
-    } catch (err) {
-      // 超时（BLE 发现最慢）与后端直接拒绝，提示要能区分
-      toast.error(errorText(err, '扫描请求失败，请确认后端服务可用'))
-    } finally {
-      setScanning(false)
+  const clearConnectTimer = () => {
+    if (connectTimerRef.current) {
+      window.clearTimeout(connectTimerRef.current)
+      connectTimerRef.current = null
     }
   }
 
-  /* ---------- 连接设备 ---------- */
-  const onConnect = async (d: DeviceItem) => {
-    const addr = (d.address || d.device || d.port || '') as string
-    if (!addr) {
-      toast.error('该设备缺少地址信息，无法连接')
-      return
-    }
-    setStep('connect')
-    const t = toast.loading(`正在连接 ${d.name || addr}…`)
-    try {
-      const res = await device.connect({
-        address: addr,
-        type: d.type || (deviceType === 'serial' ? 'serial' : 'ble'),
-      })
-      if (res.success) {
-        toast.success(res.message || '设备连接成功', { id: t })
-        setConnected(d)
-        setTimeout(() => {
-          setStep('collect')
-          void startCollect()
-        }, 700)
-      } else {
-        toast.error(res.error || '设备连接失败', { id: t })
-        setStep('scan')
+  /* ---------- 轮询注册状态 ---------- */
+  const poll = usePoll({
+    intervalMs: POLL_INTERVAL_MS,
+    maxMs: POLL_TIMEOUT_MS,
+    onTick: async () => {
+      const res = await registration.status(username)
+      if (!res.success) return true
+
+      const state = res.status ?? ''
+      const count = Number(res.verification_count ?? 0)
+      const total = Number(res.total_count ?? 3)
+
+      if (state === 'completed') {
+        setProgress(100)
+        setCollectStatus('模型训练完成')
+        setDemoResult(res.demo === true)
+        setStep('done')
+        setFinished(true)
+        setCollecting(false)
+        toast.success('注册流程完成，可以开始使用了')
+        return false
       }
-    } catch (err) {
-      toast.error(errorText(err, '连接请求失败'), { id: t })
-      setStep('scan')
-    }
-  }
+
+      if (!ACTIVE_REGISTRATION_STATES.has(state)) {
+        // 任何「不在推进中」的状态都在此终止：failed / error / device_error，
+        // 以及后端将来新增的终态。后端会为失败写明原因（未采到数据 / 算法层不可用 /
+        // 设备连接断开等），有就照实显示，没有才退回通用文案。
+        const reason = res.error_message ?? ''
+        setCollectStatus(reason || '采集或训练失败，请重试')
+        setCollecting(false)
+        toast.error(reason || '采集流程失败')
+        return false
+      }
+
+      setProgress((p) => Math.min(96, p + 4))
+      setCollectStatus(
+        count > 0 ? `已完成 ${count}/${total} 组数据校验…` : '正在采集并校验数据…'
+      )
+      return true
+    },
+    onTimeout: () => {
+      // 状态一直停在推进中、但早已超出合理时长：多半是后端采集/训练线程异常退出
+      // 而没来得及写终态。主动结束，避免无限轮询。
+      setCollectStatus(
+        '长时间未收到最终结果，已停止等待 —— 请重试，或查看后端日志确认算法层状态'
+      )
+      setCollecting(false)
+      toast.error('采集流程超时')
+    },
+  })
 
   /* ---------- 开始采集 ---------- */
   const startCollect = useCallback(async () => {
@@ -158,17 +180,11 @@ export default function CollectDataPage() {
         return
       }
 
-      if (res.model_trained) {
-        setProgress(100)
-        setCollectStatus('模型训练完成')
-        toast.success('数据采集与模型训练已完成')
-        setStep('done')
-        setFinished(true)
-      } else {
-        setProgress(72)
-        setCollectStatus('数据处理中…')
-        pollStatus()
-      }
+      // 后端立即返回 {success, message} 并转入后台线程，
+      // 因此这里必然进入轮询分支 —— 不需要判断「是否已训练完成」。
+      setProgress(72)
+      setCollectStatus('数据处理中…')
+      poll.start()
     } catch (err) {
       // 采集接口是长耗时写请求：超时（2 分钟）与后端报错的原因都写在这里，
       // 直接丢弃它换成「采集请求异常」会让用户不知道该重试还是该查后端
@@ -177,71 +193,47 @@ export default function CollectDataPage() {
       setCollecting(false)
       setCollectStatus(reason)
     }
-  }, [username, deviceType])
+  }, [username, deviceType, poll])
 
-  /* ---------- 轮询注册状态 ---------- */
-  const pollStatus = useCallback(() => {
-    if (pollRef.current) window.clearInterval(pollRef.current)
-
-    const startedAt = Date.now()
-    const stopPolling = () => {
-      if (pollRef.current) window.clearInterval(pollRef.current)
+  /* ---------- 连接设备 ---------- */
+  const onConnect = async (d: DeviceItem) => {
+    const addr = deviceAddress(d)
+    if (!addr) {
+      toast.error('该设备缺少地址信息，无法连接')
+      return
     }
-
-    pollRef.current = window.setInterval(async () => {
-      try {
-        const res = await registration.status(username)
-        if (!res.success) return
-
-        const s = res.status as unknown as Record<string, unknown>
-        const state = String(s.status ?? '')
-        const count = Number(s.verification_count ?? 0)
-        const total = Number(s.total_count ?? 3)
-
-        if (state === 'completed') {
-          setProgress(100)
-          setCollectStatus('模型训练完成')
-          setDemoResult(s.demo === true)
-          setStep('done')
-          setFinished(true)
-          setCollecting(false)
-          stopPolling()
-          toast.success('注册流程完成，可以开始使用了')
-        } else if (!ACTIVE_REGISTRATION_STATES.has(state)) {
-          // 任何「不在推进中」的状态都在此终止：failed / error / device_error，
-          // 以及后端将来新增的终态。后端会为失败写明原因（未采到数据 / 算法层不可用 /
-          // 设备连接断开等），有就照实显示，没有才退回通用文案。
-          const reason = String(s.error_message ?? '')
-          setCollectStatus(reason || '采集或训练失败，请重试')
-          setCollecting(false)
-          stopPolling()
-          toast.error(reason || '采集流程失败')
-        } else if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-          // 状态一直停在推进中、但早已超出合理时长：多半是后端采集/训练线程异常退出
-          // 而没来得及写终态。主动结束，避免无限轮询。
-          setCollectStatus('长时间未收到最终结果，已停止等待 —— 请重试，或查看后端日志确认算法层状态')
-          setCollecting(false)
-          stopPolling()
-          toast.error('采集流程超时')
-        } else {
-          setProgress((p) => Math.min(96, p + 4))
-          setCollectStatus(
-            count > 0
-              ? `已完成 ${count}/${total} 组数据校验…`
-              : '正在采集并校验数据…'
-          )
-        }
-      } catch {
-        /* 轮询失败静默重试 */
+    setStep('connect')
+    const t = toast.loading(`正在连接 ${d.name || addr}…`)
+    try {
+      const res = await device.connect({
+        address: addr,
+        type: d.type || (deviceType === 'serial' ? 'serial' : 'ble'),
+      })
+      if (res.success) {
+        toast.success(res.message || '设备连接成功', { id: t })
+        setConnected(d)
+        clearConnectTimer()
+        connectTimerRef.current = window.setTimeout(() => {
+          connectTimerRef.current = null
+          setStep('collect')
+          void startCollect()
+        }, CONNECT_DELAY_MS)
+      } else {
+        toast.error(res.error || '设备连接失败', { id: t })
+        setStep('scan')
       }
-    }, 1500)
-  }, [username])
+    } catch (err) {
+      toast.error(errorText(err, '连接请求失败'), { id: t })
+      setStep('scan')
+    }
+  }
 
   useEffect(() => {
     return () => {
-      if (pollRef.current) window.clearInterval(pollRef.current)
+      poll.stop()
+      clearConnectTimer()
     }
-  }, [])
+  }, [poll, clearConnectTimer])
 
   useEffect(() => {
     toast.info(`已为「${username}」创建注册会话`, { duration: 3200 })
@@ -253,26 +245,7 @@ export default function CollectDataPage() {
   return (
     <div className="mx-auto max-w-4xl px-4 py-12 sm:px-6">
       {/* 演示模式：注册同样会降级为合成数据，须在流程开始前就说明 */}
-      {demoMode && (
-        <FadeUp>
-          <div
-            role="alert"
-            className="mb-8 flex items-start gap-3 rounded-[var(--radius-md)] border border-amber-500/45 bg-amber-500/10 p-4"
-          >
-            <AlertTriangle className="mt-0.5 size-4 shrink-0 text-amber-500" />
-            <div className="text-sm leading-relaxed">
-              <p className="font-medium text-amber-500">演示模式已开启</p>
-              <p className="mt-1 text-[hsl(var(--muted-foreground))]">
-                采集不到真实设备信号时，系统会改用合成数据训练模型。以此注册的账户
-                <span className="font-medium text-amber-500">
-                  不具备真实生物特征依据
-                </span>
-                ，仅用于功能演示。
-              </p>
-            </div>
-          </div>
-        </FadeUp>
-      )}
+      {demoMode && <DemoModeBanner variant="register" />}
 
       <FadeUp>
         <header className="mb-10 text-center">
@@ -313,93 +286,31 @@ export default function CollectDataPage() {
                         请确保心电手环已开机并处于可被发现状态
                       </p>
                     </div>
-                    <div className="flex gap-1.5 rounded-[var(--radius-md)] border border-[hsl(var(--border))] bg-[hsl(var(--secondary)/0.5)] p-1">
-                      {(
-                        [
-                          { k: 'all', label: '全部', icon: Radio },
-                          { k: 'ble', label: '蓝牙', icon: Bluetooth },
-                          { k: 'serial', label: '串口', icon: Cable },
-                        ] as const
-                      ).map((o) => (
-                        <button
-                          key={o.k}
-                          type="button"
-                          onClick={() => setDeviceType(o.k)}
-                          className={cn(
-                            'flex items-center gap-1.5 rounded-[var(--radius-sm)] px-3 py-1.5 text-xs font-medium transition-all duration-250',
-                            deviceType === o.k
-                              ? 'bg-[hsl(var(--primary)/0.16)] text-[hsl(var(--primary))]'
-                              : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
-                          )}
-                        >
-                          <o.icon className="size-3.5" />
-                          {o.label}
-                        </button>
-                      ))}
-                    </div>
+                    <DeviceTypeTabs value={deviceType} onChange={setDeviceType} />
                   </div>
 
-                  <Button
-                    onClick={onScan}
-                    disabled={scanning}
-                    variant="brand"
-                    size="lg"
-                    className="w-full"
-                  >
-                    {scanning ? (
-                      <>
-                        <RefreshCw className="size-5 animate-spin" />
-                        正在扫描…
-                      </>
-                    ) : (
-                      <>
-                        <Search className="size-5" />
-                        扫描设备
-                      </>
-                    )}
-                  </Button>
+                  <ScanButton scanning={scanning} onScan={onScan} />
 
                   {/* 演示模式专用入口：仅在后端开启该开关时出现。
                       后端此时已放行设备检查，直接进入采集即可由合成数据补足。 */}
                   {demoMode && (
-                    <Button
-                      variant="outline"
-                      size="lg"
-                      className="mt-3 w-full border-amber-500/45 text-amber-500 hover:bg-amber-500/10 hover:text-amber-500"
+                    <DemoSkipButton
                       onClick={() => {
                         setStep('collect')
                         void startCollect()
                       }}
-                    >
-                      <AlertTriangle className="size-5" />
-                      演示模式：跳过设备，使用合成数据
-                    </Button>
+                    />
                   )}
 
                   {/* 扫描中骨架屏 */}
-                  {scanning && (
-                    <div className="mt-6 space-y-2.5">
-                      {[0, 1, 2].map((i) => (
-                        <div
-                          key={i}
-                          className="flex items-center gap-4 rounded-[var(--radius-md)] border border-[hsl(var(--border)/0.5)] p-4"
-                        >
-                          <Skeleton className="size-9 rounded-[var(--radius-sm)]" />
-                          <div className="flex-1 space-y-2">
-                            <Skeleton className="h-3.5 w-40" />
-                            <Skeleton className="h-3 w-24" />
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  {scanning && <DeviceListSkeleton rows={3} />}
 
                   {/* 设备列表 */}
                   {!scanning && devices.length > 0 && (
                     <div className="mt-6 space-y-2.5">
                       {devices.map((d, i) => (
                         <DeviceRow
-                          key={(d.address as string) || i}
+                          key={deviceAddress(d) || i}
                           device={d}
                           onConnect={() => onConnect(d)}
                         />
@@ -423,7 +334,10 @@ export default function CollectDataPage() {
                   <p className="mt-2 text-sm text-[hsl(var(--muted-foreground))]">
                     {connected?.name || '正在握手…'}
                   </p>
-                  <div className="mt-8 w-full max-w xs:max-w-sm">
+                  {/* 原为 `max-w xs:max-w-sm`：`max-w` 缺取值、`xs:` 断点未在
+                      @theme 中定义，两个类都不生成任何规则、被静默忽略。
+                      此处按原意（限制进度条宽度并居中）显式写出。 */}
+                  <div className="mx-auto mt-8 w-full max-w-sm">
                     <div className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--secondary))]">
                       <motion.div
                         className="h-full rounded-full bg-[hsl(var(--primary))]"
@@ -613,50 +527,5 @@ function StepIndicator({ activeIndex }: { activeIndex: number }) {
         })}
       </div>
     </div>
-  )
-}
-
-function DeviceRow({
-  device,
-  onConnect,
-}: {
-  device: DeviceItem
-  onConnect: () => void
-}) {
-  const name = (device.name || device.device || '未知设备') as string
-  const addr = (device.address || device.port || '-') as string
-  const type = (device.type || '-') as string
-  const rssi = device.rssi as number | undefined
-
-  return (
-    <motion.button
-      type="button"
-      onClick={onConnect}
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      whileHover={{ scale: 1.01 }}
-      transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
-      className="flex w-full items-center gap-4 rounded-[var(--radius-md)] border border-[hsl(var(--border)/0.6)] bg-[hsl(var(--secondary)/0.35)] p-4 text-left transition-colors duration-250 hover:border-[hsl(var(--primary)/0.5)] hover:bg-[hsl(var(--secondary)/0.6)]"
-    >
-      <span className="flex size-9 shrink-0 items-center justify-center rounded-[var(--radius-sm)] bg-[hsl(var(--primary)/0.12)]">
-        {type === 'serial' ? (
-          <Cable className="size-4 text-[hsl(var(--primary))]" />
-        ) : (
-          <Bluetooth className="size-4 text-[hsl(var(--primary))]" />
-        )}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="truncate text-sm font-medium">{name}</div>
-        <div className="truncate font-mono text-xs text-[hsl(var(--muted-foreground))]">
-          {addr}
-        </div>
-      </div>
-      {typeof rssi === 'number' && (
-        <Badge variant="muted" className="tabular shrink-0">
-          {rssi} dBm
-        </Badge>
-      )}
-      <ChevronRight className="size-4 shrink-0 text-[hsl(var(--muted-foreground))]" />
-    </motion.button>
   )
 }

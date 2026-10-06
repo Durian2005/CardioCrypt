@@ -308,6 +308,47 @@ export const session = {
 
 /* ---------------- 设备与采集 ---------------- */
 
+/**
+ * 后端注册流程会写入的状态。
+ *
+ * 刻意用字面量联合而不是 `string`：前端要靠它做**穷尽判定**——
+ * 只有 `ACTIVE_REGISTRATION_STATES`（白名单）里的状态才继续轮询，
+ * 其余一律终止并显示原因。后端每新增一个终态，白名单写法都天然覆盖；
+ * 但若这里写成 `string`，新增状态在编译期不会有任何提示。
+ */
+export type RegistrationState =
+  | 'pending'
+  | 'collecting'
+  | 'training'
+  | 'verifying'
+  | 'completed'
+  | 'failed'
+  | 'error'
+  | 'device_error'
+
+/**
+ * `/api/registration_status/<username>` 的 `status` 字段。
+ *
+ * ⚠️ 它是一个**对象**而不是字符串 —— 后端 `registration_status()` 返回的是
+ * `{'success': true, 'status': {…状态字典…}}`。原先前端把这里声明成
+ * `status: string`，于是消费处只能写 `res.status as unknown as
+ * Record<string, unknown>` 双重断言绕过类型检查 —— 类型系统在这里
+ * 完全失去保护作用，字段名写错也不会报错。
+ */
+export interface RegistrationStatus {
+  status?: RegistrationState
+  /** 自检进度：已完成 / 总数 */
+  verification_count?: number
+  verification_success?: number
+  total_count?: number
+  model_path?: string | null
+  /** 失败/设备断开时的原因（后端如实写明） */
+  error_message?: string
+  /** 本次注册基于合成数据（演示模式），界面需显著提示 */
+  demo?: boolean
+  demo_reasons?: string[]
+}
+
 export interface DeviceItem {
   name?: string
   address?: string
@@ -342,21 +383,13 @@ export const registration = {
     apiPost<{
       success: boolean
       message?: string
-      data_collected?: number
-      model_trained?: boolean
       error?: string
-      [key: string]: unknown
     }>('/api/start_data_collection', payload),
   status: (username: string) =>
     apiGet<{
       success: boolean
-      status: string
-      data_count?: number
-      verification_count?: number
-      verification_success?: number
-      model_path?: string
       error?: string
-    }>(`/api/registration_status/${encodeURIComponent(username)}`),
+    } & RegistrationStatus>(`/api/registration_status/${encodeURIComponent(username)}`),
 }
 
 /* ---------------- 身份验证 ---------------- */
