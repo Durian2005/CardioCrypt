@@ -10,6 +10,7 @@
 
 import os
 import random
+import re
 import threading
 import time
 from datetime import datetime
@@ -80,6 +81,30 @@ VERIFY_INTERVAL_SECONDS = 2
 #: 自检时合成的心率基准与抖动范围（BPM）
 VERIFY_BASE_HEART_RATE = 70
 VERIFY_HEART_RATE_JITTER = 5
+
+
+def _model_path_for(username):
+    """
+    为用户推导模型文件的**绝对路径**，并把文件名收口在 models_dir 之内。
+
+    为什么单独抽一个函数：`os.path.join(models_dir, f'{username}_model.pth')` 在
+    `username` 含路径分隔符或 `..` 时会被规范化到 models_dir 之外 —— 写出去的
+    模型文件落在哪、以及后续按库里的 `model_path` 读回哪一个文件，都不再可控。
+
+    注册入口已用 USERNAME_RE 做过白名单（只用中英文/数字/下划线/点/连字符），
+    正常路径下这里的替换是空操作。但仍在这里再做一次字符收敛与路径断言：
+    校验是**入口**的职责，落盘是**最后一道**职责，两者都拦住才算真正收口；
+    且将来若有人从别的入口（如管理员批量导入）创建用户，这一层仍能兜住。
+    """
+    safe_name = re.sub(r'[^\w.\-]', '_', username or '')
+    if not safe_name or safe_name in ('.', '..'):
+        raise ValueError('无法为非法用户名生成模型路径: %r' % (username,))
+
+    model_path = os.path.abspath(os.path.join(models_dir, '%s_model.pth' % safe_name))
+    # commonpath 在同一个盘符下比较，避免 '..' 绕过 join 的规范化
+    if os.path.commonpath([os.path.abspath(models_dir), model_path]) != os.path.abspath(models_dir):
+        raise ValueError('模型路径越出 models 目录: %r' % (model_path,))
+    return model_path
 
 
 # API: 扫描BLE设备
@@ -548,8 +573,7 @@ def start_data_collection():
                     # validation_results = validate_model(model, train_loader, test_loader, signal_type="ecg", device=device)
                     
                     # 保存模型
-                    model_filename = f"{username}_model.pth"
-                    model_path = os.path.join(models_dir, model_filename)
+                    model_path = _model_path_for(username)
                     
                     # 构建保存的元数据
                     metadata = {
@@ -606,6 +630,17 @@ def start_data_collection():
                                 device=device
                             )
                             confidence = auth_result['score']
+
+                        # 与验证链路同一口径：status=='error' 表示「本次推理没算出来」，
+                        # 与「算出来了但没通过」是两回事。注册自检里若把前者也当成
+                        # 「自检不通过」，会把一次系统故障报告成「模型质量不达标」——
+                        # 用户拿着一个其实没被评估过的模型反复重采，问题却不在数据上。
+                        # 这里如实中止并写明原因（fail-closed，同样不写库、不出模型）。
+                        if auth_result.get('status') == 'error':
+                            raise RuntimeError(
+                                '注册自检时特征比对过程出错: %s'
+                                % (auth_result.get('error', '未提供细节'),)
+                            )
 
                         # 使用管理员配置的阈值
                         if auth_result['authenticated']:

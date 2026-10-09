@@ -106,8 +106,18 @@ def index():
 @bp.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form.get('username')
-        
+        # 与 login() 同一口径的白名单校验。
+        #
+        # 注册是用户名的**首次落库点**，这里必须与登录校验一致：登录侧早已用
+        # USERNAME_RE 挡掉超长串与控制字符，注册侧原先却完全没校验 —— 于是同一份
+        # 用户名在两条路径上的合法性判定不一致，用非浏览器客户端可直接提交
+        # 任意字符串（含空值、超长、路径分隔符），并带着它一路进入采集与训练流程
+        # （模型文件名由它拼接，见 device.py）。前后端校验口径必须一致。
+        username = (request.form.get('username') or '').strip()
+        if not USERNAME_RE.match(username):
+            flash('用户名无效：仅支持中英文、数字、下划线、点、连字符，长度 1-64')
+            return redirect(url_for('auth.register'))
+
         # 检查用户名是否已存在
         existing_user = mongo.db.users.find_one({'username': username})
         if existing_user:
@@ -373,6 +383,24 @@ def start_verification():
                                     model, signal_data,
                                     threshold=state.admin_setting('model_threshold', 0.8),
                                 )
+
+                                # 先看 status：算法层用 'error' 区分「推理没算出来」
+                                # 与「算出来了但判为不通过」。两者都是 fail-closed
+                                # （同样不放行），但对用户的说法完全不同 ——
+                                # 「系统故障，请稍后重试」与「你不是本人」不是一回事，
+                                # 前端据 status 走的是不同的失败分支。
+                                #
+                                # 用 .get 而非索引：认证函数的契约里 status 是既定字段，
+                                # 但测试会替身一个只有 authenticated/score 的简化返回，
+                                # 缺字段时按「正常完成」处理，避免把兼容性问题误判成故障。
+                                if auth_result.get('status') == 'error':
+                                    logger.error(
+                                        "用户 %s 验证失败：特征比对过程出错（%s）",
+                                        username, auth_result.get('error', '未提供细节'),
+                                    )
+                                    fail('特征比对过程出错，请稍后重试', status='error')
+                                    return
+
                                 passed = bool(auth_result['authenticated'])
                                 finish(passed, score=auth_result['score'])
                                 logger.info(
