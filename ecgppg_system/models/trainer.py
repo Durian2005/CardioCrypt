@@ -233,14 +233,17 @@ class ModelTrainer:
         best_epoch = 0
         no_improve_count = 0
         
-        # 保存最佳模型的状态字典
+        # 最佳权重只保留在内存：训练结束后用它覆盖当前参数。
+        #
+        # 这里曾经每遇到一次 val_loss 改善就 torch.save 到 MODEL_DIR 下两个固定
+        # 文件名（BiLSTMWithAttention_best.pth / _final.pth）。那批文件在本仓库
+        # **没有任何读取方** —— 部署模型走 model_example.model_io.save_model，按
+        # 用户名存到 web_auth/models/ 并记进 users.model_path。代价是每次训练最多
+        # 50 次全量权重写盘（约 27MB），且并发注册会互相覆盖同一个文件。
+        #
+        # 现在训练器只负责"训练出权重"，落盘交给调用方决定文件名与位置。
         best_model_state = None
-        
-        # 初始化保存路径
-        best_model_path = os.path.join(settings.MODEL_DIR, 'BiLSTMWithAttention_best.pth')
-        final_model_path = os.path.join(settings.MODEL_DIR, 'BiLSTMWithAttention_final.pth')
-        os.makedirs(settings.MODEL_DIR, exist_ok=True)
-        
+
         for epoch in range(1, epochs + 1):
             # 训练一个周期
             train_loss = self.train_epoch(train_loader)
@@ -255,12 +258,9 @@ class ModelTrainer:
                     best_epoch = epoch
                     no_improve_count = 0
                     
-                    # 保存最佳模型状态
+                    # 只把权重留在内存，落盘由调用方决定（见上方说明）
                     best_model_state = copy.deepcopy(self.model.state_dict())
-                    
-                    # 保存最佳模型
-                    torch.save(self.model.state_dict(), best_model_path)
-                    logger.info(f"模型已保存到: {best_model_path} (Epoch {epoch}, 验证损失: {val_loss:.4f})")
+                    logger.info(f"记录最佳模型权重 (Epoch {epoch}, 验证损失: {val_loss:.4f})")
                 else:
                     no_improve_count += 1
                     
@@ -280,20 +280,17 @@ class ModelTrainer:
                     best_val_loss = train_loss
                     best_epoch = epoch
                     
-                    # 保存最佳模型状态
+                    # 只把权重留在内存，落盘由调用方决定（见上方说明）
                     best_model_state = copy.deepcopy(self.model.state_dict())
-                    
-                    # 保存最佳模型
-                    torch.save(self.model.state_dict(), best_model_path)
-                    logger.info(f"模型已保存到: {best_model_path} (Epoch {epoch}, 训练损失: {train_loss:.4f})")
+                    logger.info(f"记录最佳模型权重 (Epoch {epoch}, 训练损失: {train_loss:.4f})")
         
-        # 训练结束，保存最终模型
-        torch.save(self.model.state_dict(), final_model_path)
-        logger.info(f"最终模型已保存到: {final_model_path}")
-        
-        # 重要：加载最佳模型而不是使用最终状态
+        # 训练结束：恢复最佳轮次的权重
+        #
+        # 不在这里写文件 —— 部署模型由调用方用 model_example.model_io.save_model
+        # 按用户名保存（见 web_auth/blueprints/device.py）。训练器不再产生无人读取
+        # 的固定文件名产物，也不再与并发注册争抢同一路径。
         if best_model_state is not None:
-            logger.info(f"加载最佳模型 (Epoch {best_epoch})")
+            logger.info(f"恢复最佳模型权重 (Epoch {best_epoch})")
             self.model.load_state_dict(best_model_state)
         
         # 准备返回的训练历史记录

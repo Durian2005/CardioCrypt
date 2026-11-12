@@ -25,6 +25,7 @@ from web_auth.config import logger, models_dir
 from web_auth.core import (
     SYSTEM_AVAILABLE,
     authenticate_single_signal,
+    cache_user_model,
     configure_data_augmentation,
     create_model,
     save_model,
@@ -475,22 +476,24 @@ def start_data_collection():
             collected_data = outcome.points
 
             # 处理采集到的数据
+            #
+            # 先过滤一次，后面的「写状态」与「训练」共用这份结果。原先只有写状态
+            # 那半边过滤了，训练侧直接 np.concatenate(collected_data) —— 一旦设备
+            # 异常让 points 里混进标量，就会抛 "zero-dimensional arrays cannot be
+            # concatenated"，把一次数据问题报成训练失败。
+            all_signals = filter_signal_arrays(collected_data)
+
             with state.registration_lock:
                 # 保存当前批次的数据
                 if 'data' not in state.current_registration_data[username]:
                     state.current_registration_data[username]['data'] = []
-                
+
                 # 将收集的数据转换为适当的格式
-                if collected_data and len(collected_data) > 0:
-                    # 滤掉标量，只留可拼接的数组
-                    all_signals = filter_signal_arrays(collected_data)
-                    
-                    # 只有当有有效数据时才处理
-                    if all_signals:
-                        # 拼接所有采集的信号
-                        combined_signal = np.concatenate(all_signals)
-                        state.current_registration_data[username]['data'].append(combined_signal)
-                        logger.info(f"成功将用户 {username} 的{len(all_signals)}个信号数据合并为一个数组")
+                if all_signals:
+                    # 拼接所有采集的信号
+                    combined_signal = np.concatenate(all_signals)
+                    state.current_registration_data[username]['data'].append(combined_signal)
+                    logger.info(f"成功将用户 {username} 的{len(all_signals)}个信号数据合并为一个数组")
                 
                 # 更新状态为训练中
                 state.current_registration_data[username]['status'] = 'training'
@@ -499,9 +502,10 @@ def start_data_collection():
             if SYSTEM_AVAILABLE:
                 try:
                     logger.info("开始模型训练流程")
-                    # 准备训练数据
-                    # 将所有采集的数据合并为一个大数组
-                    all_data = np.concatenate(collected_data)
+                    # 准备训练数据：复用上面那份过滤结果，而不是再拼一次原始列表
+                    if not all_signals:
+                        raise ValueError('未采集到可用于训练的数组数据')
+                    all_data = np.concatenate(all_signals)
                     logger.info(f"合并后的数据shape: {all_data.shape}")
 
                     # 重塑数据为LSTM需要的格式 [batch_size, sequence_length, features]
@@ -588,8 +592,9 @@ def start_data_collection():
                     # 保存模型和元数据
                     save_model(model, model_path, metadata)
                     
-                    # 添加到用户模型缓存
-                    state.user_models[username] = model
+                    # 添加到用户模型缓存 —— 必须走统一的写入入口：
+                    # 直接写字典会绕过 LRU 的锁与 MAX_CACHED_MODELS 上限。
+                    cache_user_model(username, model)
                     
                     # 更新注册状态
                     with state.registration_lock:

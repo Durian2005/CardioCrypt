@@ -203,6 +203,10 @@ def _purge_user(username):
         state.current_registration_data.pop(username, None)
     with state.verification_lock:
         state.verification_results.pop(username, None)
+    # 模型缓存持有的是完整 nn.Module：用户删掉后若不摘掉，这份权重会一直常驻到
+    # 下次缓存淘汰为止（每个约 0.5MB，GPU 上还占显存），并且与「已删除」的事实不符。
+    with state.user_models_lock:
+        state.user_models.pop(username, None)
     # 时间戳也一并清掉，否则回收线程会对着早已不存在的条目空跑到 TTL
     state.forget_state('registration', username)
     state.forget_state('verification', username)

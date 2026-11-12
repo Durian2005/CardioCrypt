@@ -155,6 +155,59 @@ def admin_required(f):
     return decorated_function
 
 
+def cache_user_model(username, model):
+    """
+    把模型放进共享缓存，与 `get_user_model` 的读路径共用同一把锁与同一套淘汰规则。
+
+    为什么单独抽出来：注册流程（`blueprints/device.py`）训练完模型后要立即放进缓存，
+    免得第一次验证再走一次磁盘加载。原先那里直接写 `state.user_models[username] =
+    model` —— 既没有加锁，也绕过了 `MAX_CACHED_MODELS` 的判断，结果是每个注册过的
+    用户都常驻一份模型，LRU 上限形同虚设。
+    """
+    with state.user_models_lock:
+        # 同名覆盖前先摘掉，避免重复插入后 LRU 顺序错乱
+        state.user_models.pop(username, None)
+
+        # 长度检查与插入必须在同一把锁内，否则并发下"已满"的判断会同时通过
+        if len(state.user_models) >= state.MAX_CACHED_MODELS:
+            oldest_user = next(iter(state.user_models))
+            del state.user_models[oldest_user]
+            logger.info(f"缓存已满，移除最久未使用的模型: {oldest_user}")
+
+        state.user_models[username] = model
+
+
+def _resolve_inference_device():
+    """
+    加载用户模型时使用的设备。
+
+    与训练侧的分工：训练由 `EnvironmentManager.get_optimal_device()` 决定（多卡时
+    挑显存最大的一张）；加载侧至少不该再硬编码 `cuda:0` —— 这里读同一份动态配置的
+    `system.use_cuda` / `system.cuda_device`，索引越界时回退到 0，避免管理员填错
+    就让每次模型加载都抛 "invalid device ordinal"。
+    """
+    if dynamic_config is None or not torch.cuda.is_available():
+        return torch.device('cpu')
+    if not dynamic_config.get('system', 'use_cuda', True):
+        return torch.device('cpu')
+
+    try:
+        index = int(dynamic_config.get('system', 'cuda_device', 0))
+    except (TypeError, ValueError):
+        index = 0
+
+    count = torch.cuda.device_count()
+    if count <= 0:
+        return torch.device('cpu')
+    if index < 0 or index >= count:
+        logger.warning(
+            "配置的 CUDA 设备索引 %s 越界（当前可用 %s 张），回退到 cuda:0",
+            index, count,
+        )
+        index = 0
+    return torch.device(f'cuda:{index}')
+
+
 # 获取用户模型（按需加载）
 def get_user_model(username):
     """
@@ -192,9 +245,8 @@ def get_user_model(username):
             return None
             
         try:
-            # 设置设备
-            use_cuda = dynamic_config.get('system', 'use_cuda', True)
-            device = torch.device("cuda:0" if torch.cuda.is_available() and use_cuda else "cpu")
+            # 设置设备（读动态配置里的 use_cuda / cuda_device，越界回退 cuda:0）
+            device = _resolve_inference_device()
             
             # 使用模块化的加载模型函数
             model, metadata = load_model(model_path, device)
@@ -209,15 +261,7 @@ def get_user_model(username):
             # 写入缓存：长度检查与插入/淘汰必须原子，
             # 否则并发下"缓存已满"的判断会失效，字典长度可能超出上限。
             # 模型加载本身是重 IO，刻意留在锁外，避免把并发加载串行化。
-            with state.user_models_lock:
-                # 如果缓存已满，移除最久未使用的模型
-                if len(state.user_models) >= state.MAX_CACHED_MODELS:
-                    oldest_user = next(iter(state.user_models))
-                    del state.user_models[oldest_user]
-                    logger.info(f"缓存已满，移除最久未使用的模型: {oldest_user}")
-
-                # 添加到缓存
-                state.user_models[username] = model
+            cache_user_model(username, model)
 
             logger.info(f"已加载用户 {username} 的模型")
             return model
