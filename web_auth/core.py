@@ -35,7 +35,11 @@ try:
     from model_example.model_creator import create_model, setup_model_device
     from model_example.model_trainer import train_model, configure_data_augmentation
     from model_example.model_evaluator import validate_model
-    from model_example.authentication import authenticate_single_signal
+    from model_example.authentication import (
+        authenticate_single_signal,
+        authenticate_windowed_signal,
+        score_signal_windows,
+    )
     from model_example.model_io import save_model, load_model
     from ecgppg_system.models.bilstm import BiLSTMWithAttention
     
@@ -67,6 +71,8 @@ except ImportError as e:
     configure_data_augmentation = _algorithm_module_unavailable
     validate_model = _algorithm_module_unavailable
     authenticate_single_signal = _algorithm_module_unavailable
+    authenticate_windowed_signal = _algorithm_module_unavailable
+    score_signal_windows = _algorithm_module_unavailable
     save_model = _algorithm_module_unavailable
     load_model = _algorithm_module_unavailable
     BiLSTMWithAttention = None

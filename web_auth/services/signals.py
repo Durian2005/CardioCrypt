@@ -15,6 +15,16 @@ import numpy as np
 from web_auth.core import HEART_RATE_CHARACTERISTIC, HEART_RATE_SERVICE
 
 
+#: 模型的时间步长 —— 一个训练样本 / 一个判定窗口包含多少个采样值。
+#:
+#: 这是训练与判定的**同一个形状约定**，所以放在两边的共同依赖里，而不是各写一份：
+#: 训练（`blueprints/device.py`）按它切窗，验证（`blueprints/auth.py`）必须按同一
+#: 长度切窗。两边不一致时，同一段信号会落在完全不同的分数区间 —— 实测把 600 点
+#: 整段喂给按 10 步训练的模型，分数整体漂到 1.06~1.99，而模型的训练目标是 1.0。
+#: 那种情况下阈值 0.8 拦不住任何东西，因为它低于整段口径的分数下限。
+MODEL_WINDOW_LENGTH = 10
+
+
 
 # 判断是否为心率服务
 def is_heart_rate_service(service_uuid):

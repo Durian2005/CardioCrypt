@@ -26,7 +26,7 @@ from web_auth import state
 from web_auth.config import USERNAME_RE, logger
 from web_auth.core import (
     SYSTEM_AVAILABLE,
-    authenticate_single_signal,
+    authenticate_windowed_signal,
     client_ip,
     get_user_model,
     load_app_config,
@@ -44,7 +44,7 @@ from web_auth.services.collection import (
     collect_via_serial,
     top_up_or_abort,
 )
-from web_auth.services.signals import filter_signal_arrays
+from web_auth.services.signals import MODEL_WINDOW_LENGTH, filter_signal_arrays
 
 bp = Blueprint('auth', __name__)
 
@@ -68,13 +68,15 @@ TERMINAL_VERIFICATION_STATUSES = frozenset({
 })
 
 
-#: 验证时喂给模型的时间步长（补齐/截断到这个长度再 reshape 成 [1, L, 1]）。
+#: 验证时准备喂给模型的信号长度（先补齐/截断到这，再按窗口切分）。
 #:
-#: 刻意独立于 `device.py::TRAIN_SEQUENCE_LENGTH`（那里是 10）声明：
-#: 两者看着像同一个东西，其实是两条独立约束 —— 训练侧用它决定模型结构，
-#: 本侧只是按「模型期望的输入长度」对齐采集到的数据。写死 600 是既有行为，
-#: 此处只把它变成具名常量，**取值不变**；将来若模型输入长度变化，
-#: 改这里的同时需要确认训练侧是否也要跟着改。
+#: 注意这不是「模型期望的输入长度」—— `BiLSTMWithAttention` 的 LSTM 接受任意
+#: 序列长度，`input_size=1` 指的是**特征维度**。600 的来历是
+#: `TARGET_DATA_POINTS(60) × 每个数据点 10 个采样值`。
+#:
+#: 真正必须与训练侧一致的是**窗口长度** `MODEL_WINDOW_LENGTH`：模型是拿 10 个
+#: 采样点一个样本训练出来的，整段送入时分数会整体漂到训练目标的 1.6 倍左右。
+#: 这里保留 600 只是为了「先凑够判定所需的数据量」，判定本身按窗口做。
 VERIFY_SEQUENCE_LENGTH = 600
 
 
@@ -360,28 +362,27 @@ def start_verification():
                                 # 拼接所有采集的信号
                                 signal_data = np.concatenate(all_signals)
 
-                                # 将其转换为模型可接受的格式：
-                                # 长度不足则补零、超出则截断，末了重塑成
-                                # [1, sequence_length, 1]
+                                # 按**训练时的窗口口径**打分：
+                                # 先补齐/截断到 VERIFY_SEQUENCE_LENGTH，再切成
+                                # 长度为 MODEL_WINDOW_LENGTH 的等长窗口，一次批量
+                                # 前向拿到逐窗分数，取均值作为判定分数。
+                                #
+                                # 不再把整段 600 点一次性喂进去 —— 模型是按 10 点
+                                # 一个样本训练的，整段输入会让分数漂到训练目标的
+                                # 1.6 倍左右（实测 1.06~1.99），那时阈值 0.8 低于
+                                # 分布下限、形同虚设。换口径后分数回到 1.0 附近，
+                                # 阈值才重新具有「与注册样本有多像」的含义。
+                                #
                                 # 注意这里不再判断 SYSTEM_AVAILABLE —— 它在外层
                                 # 已经为真（否则本分支根本进不来），重复判断会让
                                 # 读者误以为存在算法层失效的第三条路径。
-                                sequence_length = VERIFY_SEQUENCE_LENGTH
-                                data_length = len(signal_data)
-                                if data_length < sequence_length:
-                                    padded_data = np.zeros(sequence_length)
-                                    padded_data[:data_length] = signal_data
-                                    signal_data = padded_data
-                                else:
-                                    signal_data = signal_data[:sequence_length]
-
-                                signal_data = signal_data.reshape(1, sequence_length, 1)
-
-                                # 调用身份验证函数
-                                # 判定结论只来自算法输出，这里不做任何改写
-                                auth_result = authenticate_single_signal(
+                                auth_result = authenticate_windowed_signal(
                                     model, signal_data,
                                     threshold=state.admin_setting('model_threshold', 0.8),
+                                    window_length=MODEL_WINDOW_LENGTH,
+                                    aggregation='mean',
+                                    target_length=VERIFY_SEQUENCE_LENGTH,
+                                    signal_type='ecg',
                                 )
 
                                 # 先看 status：算法层用 'error' 区分「推理没算出来」

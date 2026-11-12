@@ -150,9 +150,11 @@ class TestDemoModeEnabled:
         """
         monkeypatch.setattr(demo_module, 'DEMO_MODE', True)
         monkeypatch.setattr(auth_module, 'get_user_model', lambda name: object())
+        # 判定入口是窗口口径的比对函数（`authenticate_windowed_signal`）；
+        # 用 **kwargs 接住窗口长度/聚合方式等参数，避免签名一变就悄悄失效。
         monkeypatch.setattr(
-            auth_module, 'authenticate_single_signal',
-            lambda model, data, threshold=None: {'authenticated': True, 'score': 0.93},
+            auth_module, 'authenticate_windowed_signal',
+            lambda model, data, **kwargs: {'authenticated': True, 'score': 0.93},
         )
 
         json_post(client, '/api/start_verification', None, csrf_token)
@@ -171,8 +173,8 @@ class TestDemoModeEnabled:
         monkeypatch.setattr(demo_module, 'DEMO_MODE', True)
         monkeypatch.setattr(auth_module, 'get_user_model', lambda name: object())
         monkeypatch.setattr(
-            auth_module, 'authenticate_single_signal',
-            lambda model, data, threshold=None: {'authenticated': False, 'score': 0.21},
+            auth_module, 'authenticate_windowed_signal',
+            lambda model, data, **kwargs: {'authenticated': False, 'score': 0.21},
         )
 
         json_post(client, '/api/start_verification', None, csrf_token)

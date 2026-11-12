@@ -24,11 +24,11 @@ from web_auth import state
 from web_auth.config import logger, models_dir
 from web_auth.core import (
     SYSTEM_AVAILABLE,
-    authenticate_single_signal,
     cache_user_model,
     configure_data_augmentation,
     create_model,
     save_model,
+    score_signal_windows,
     setup_model_device,
     train_model,
 )
@@ -43,6 +43,7 @@ from web_auth.services.collection import (
     top_up_or_abort,
 )
 from web_auth.services.signals import (
+    MODEL_WINDOW_LENGTH,
     filter_signal_arrays,
     generate_ecg_ppg_data,
     is_heart_rate_service,
@@ -68,7 +69,10 @@ BLE_EARLY_FALLBACK_SECONDS = 15
 
 #: 训练样本的时间步长（每个样本含多少个数据点）
 #: 同时也是训练后自检的输入长度 —— 两者是同一批数据，故复用同一常量。
-TRAIN_SEQUENCE_LENGTH = 10
+#:
+#: 取值来自 `services.signals.MODEL_WINDOW_LENGTH`：验证侧要用同一个数字切窗，
+#: 各写一份就会出现「训练 10、验证 600」那种两边都自洽、合起来不自洽的裂缝。
+TRAIN_SEQUENCE_LENGTH = MODEL_WINDOW_LENGTH
 
 #: 训练与自检的批大小
 TRAIN_BATCH_SIZE = 32
@@ -580,13 +584,34 @@ def start_data_collection():
                     model_path = _model_path_for(username)
                     
                     # 构建保存的元数据
+                    #
+                    # 键名必须与 `ModelTrainer.train` 的返回值对齐：它给的是
+                    # train_losses / val_losses / best_epoch / best_val_loss。
+                    # 原先这里读 `history.get('train_loss')` 和 `epochs_trained`
+                    # 这两个**不存在的键** —— `.get` 不报错，于是每个存档都写成
+                    # epochs_trained=0、两个 loss 为 null：字段在，值全是空的，
+                    # 事后想判断「这个模型到底训了几轮、收没收敛」无从查起。
+                    train_losses = history.get('train_losses') or []
+                    val_losses = history.get('val_losses') or []
+
                     metadata = {
                         'signal_type': 'ecg',
                         'input_size': 1,
-                        'epochs_trained': history.get('epochs_trained', 0),
-                        'final_train_loss': history.get('train_loss', [])[-1] if history.get('train_loss') else None,
-                        'final_val_loss': history.get('val_loss', [])[-1] if history.get('val_loss') else None,
-                        'model_config': {'input_size': 1}
+                        'epochs_trained': len(train_losses),
+                        'final_train_loss': train_losses[-1] if train_losses else None,
+                        'final_val_loss': val_losses[-1] if val_losses else None,
+                        'best_epoch': history.get('best_epoch'),
+                        'best_val_loss': history.get('best_val_loss'),
+                        'model_config': {'input_size': 1},
+                        # 评分口径随模型走：同一个 .pth 换个口径打分，分数会差一大截
+                        # （实测统一段信号：10 步窗口均值 0.99，整段 600 点 1.61）。
+                        # 不写进存档的话，读模型的人无从判断某个分数该跟什么比。
+                        'scoring': {
+                            'window_length': MODEL_WINDOW_LENGTH,
+                            'aggregation': 'mean',
+                            'semantics': 'similarity_regression',
+                            'target_value': 1.0,
+                        },
                     }
                     
                     # 保存模型和元数据
@@ -605,58 +630,71 @@ def start_data_collection():
                     total_verification_count = state.admin_setting(
                         'total_verification_count', 3
                     )
-                    for i in range(total_verification_count):
-                        # 生成新的验证数据
-                        verify_ecg_data, _ = generate_ecg_ppg_data(
+                    threshold = state.admin_setting('model_threshold', 0.8)
+
+                    # 先把各轮数据生成好拼成一条，再**一次前向**拿到每一轮的分数。
+                    #
+                    # 原先每轮各自前向一次：3 次小张量调用，每次都要单独付一遍
+                    # Python 侧调度与张量搬运的开销。合并成一个 [N, 窗口, 1] 批次
+                    # 后，分数与逐条前向逐位相同（实测 max|diff| = 0），耗时约减半。
+                    #
+                    # 逐轮的状态更新与间隔仍留在下面的循环里 —— 前端靠
+                    # verification_success 显示「第几轮通过」，一次算完不等于一次报完。
+                    verify_samples = []
+                    for _ in range(max(1, int(total_verification_count))):
+                        sample, _ = generate_ecg_ppg_data(
                             num_samples=TRAIN_SEQUENCE_LENGTH,
                             base_heart_rate=VERIFY_BASE_HEART_RATE
                             + random.uniform(-VERIFY_HEART_RATE_JITTER,
                                               VERIFY_HEART_RATE_JITTER),
                         )
+                        verify_samples.append(
+                            np.asarray(sample, dtype=np.float64).reshape(-1))
 
-                        # 重塑为LSTM需要的格式 [1, sequence_length, 1]
-                        verify_ecg_data = verify_ecg_data.reshape(
-                            1, TRAIN_SEQUENCE_LENGTH, 1
+                    # 拼成一条长信号后按窗口口径切：每条样本正好一个窗口，
+                    # 于是「第 i 个窗口的分数」就是「第 i 轮的分数」。
+                    score_result = score_signal_windows(
+                        model=model,
+                        input_signal=np.concatenate(verify_samples),
+                        window_length=TRAIN_SEQUENCE_LENGTH,
+                    )
+
+                    # 与验证链路同一口径：status=='error' 表示「本次推理没算出来」，
+                    # 与「算出来了但没通过」是两回事。注册自检里若把前者也当成
+                    # 「自检不通过」，会把一次系统故障报告成「模型质量不达标」——
+                    # 用户拿着一个其实没被评估过的模型反复重采，问题却不在数据上。
+                    # 这里如实中止并写明原因（fail-closed，同样不写库、不出模型）。
+                    if score_result.get('status') == 'error':
+                        raise RuntimeError(
+                            '注册自检时特征比对过程出错: %s'
+                            % (score_result.get('error', '未提供细节'),)
                         )
-                        
-                        # 使用模型进行验证
-                        model.eval()
-                        with torch.no_grad():
-                            device = next(model.parameters()).device
-                            verify_tensor = torch.FloatTensor(verify_ecg_data).to(device)
-                            
-                            # 使用模块化的身份验证函数
-                            # 判定结论只来自算法输出，这里不参与任何改写
-                            auth_result = authenticate_single_signal(
-                                model=model,
-                                input_signal=verify_tensor,
-                                threshold=state.admin_setting('model_threshold', 0.8),
-                                signal_type='ecg',
-                                device=device
-                            )
-                            confidence = auth_result['score']
 
-                        # 与验证链路同一口径：status=='error' 表示「本次推理没算出来」，
-                        # 与「算出来了但没通过」是两回事。注册自检里若把前者也当成
-                        # 「自检不通过」，会把一次系统故障报告成「模型质量不达标」——
-                        # 用户拿着一个其实没被评估过的模型反复重采，问题却不在数据上。
-                        # 这里如实中止并写明原因（fail-closed，同样不写库、不出模型）。
-                        if auth_result.get('status') == 'error':
-                            raise RuntimeError(
-                                '注册自检时特征比对过程出错: %s'
-                                % (auth_result.get('error', '未提供细节'),)
-                            )
+                    round_scores = score_result['scores']
+                    if len(round_scores) != len(verify_samples):
+                        # 窗口数对不上说明切窗口径与样本数不一致；宁可报错，
+                        # 也不要拿错位的分数去判定
+                        raise RuntimeError(
+                            '注册自检的窗口数(%d)与样本数(%d)不一致'
+                            % (len(round_scores), len(verify_samples))
+                        )
 
-                        # 使用管理员配置的阈值
-                        if auth_result['authenticated']:
+                    for i, confidence in enumerate(round_scores):
+                        passed = confidence >= threshold
+                        if passed:
                             with state.registration_lock:
                                 state.current_registration_data[username]['verification_success'] += 1
                                 verification_success += 1
-                        
-                        logger.info(f"验证 {i+1} 结果: 置信度 {confidence:.4f}")
-                        
-                        # 验证间隔
-                        time.sleep(VERIFY_INTERVAL_SECONDS)
+
+                        logger.info(
+                            "验证 %d 结果: 相似度 %.4f（%s，阈值 %.2f）",
+                            i + 1, confidence, '通过' if passed else '失败', threshold,
+                        )
+
+                        # 验证间隔只在轮次之间等：最后一轮等完没有任何消费者，
+                        # 原先也睡满 2 秒，纯属白等。
+                        if i + 1 < len(round_scores):
+                            time.sleep(VERIFY_INTERVAL_SECONDS)
 
                     # 检查验证结果，使用管理员配置的最小成功次数
                     min_verification_success = state.admin_setting(

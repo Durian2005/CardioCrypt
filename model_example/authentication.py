@@ -17,6 +17,8 @@
 ``error`` 字段保留异常摘要供日志排查，不要直接回显给终端用户。
 """
 
+import math
+
 import torch
 import torch.nn as nn
 import numpy as np
@@ -24,6 +26,47 @@ from typing import Dict, Any, Optional
 import time
 
 from ecgppg_system.utils.logger import logger
+
+#: 分数语义标记。
+#:
+#: 模型是用 ``nn.MSELoss`` 把输出回归到 **1.0** 训练出来的（见
+#: ``ecgppg_system/models/trainer.py::ModelTrainer``），所以输出是
+#: 「与注册样本的重构相似度」，**不是**分类概率，也不保证落在 [0, 1]。
+#: 阈值因此只是这条相似度刻度上的一个切点，而不是概率意义上的置信水平。
+SCORE_SEMANTICS_SIMILARITY = 'similarity_regression'
+
+#: 支持的窗口聚合方式。默认取均值：训练目标就是「每个窗口都该接近 1.0」，
+#: 均值是这个目标的直接对应物；median / min 用于需要更保守口径的场合。
+AGGREGATIONS = ('mean', 'median', 'min')
+
+
+def _as_1d_signal(input_signal) -> np.ndarray:
+    """把各种输入整理成一维 float64 数组（不改变长度）。"""
+    if torch.is_tensor(input_signal):
+        return input_signal.detach().cpu().numpy().astype(np.float64, copy=False).reshape(-1)
+    return np.asarray(input_signal, dtype=np.float64).reshape(-1)
+
+
+def _fit_length(data: np.ndarray, target_length) -> np.ndarray:
+    """把信号补齐/截断到 ``target_length``；未指定时原样返回。"""
+    if target_length is None or target_length <= 0:
+        return data
+    if len(data) < target_length:
+        padded = np.zeros(target_length, dtype=data.dtype)
+        padded[:len(data)] = data
+        return padded
+    return data[:target_length]
+
+
+def _aggregate_scores(scores: np.ndarray, method: str) -> float:
+    if method == 'mean':
+        return float(scores.mean())
+    if method == 'median':
+        return float(np.median(scores))
+    if method == 'min':
+        return float(scores.min())
+    raise ValueError(f"不支持的聚合方式: {method!r}（可选 {AGGREGATIONS}）")
+
 
 def authenticate_single_signal(model: nn.Module, 
                               input_signal: torch.Tensor, 
@@ -107,8 +150,20 @@ def authenticate_single_signal(model: nn.Module,
                 prediction = prediction.squeeze()
             
             # 将预测转换为身份验证结果
-            # 假设模型输出为身份匹配的概率
-            score = prediction.item()
+            #
+            # 分数语义见文件头部 ``SCORE_SEMANTICS_SIMILARITY``：这是 MSE 回归
+            # 到 1.0 的原始输出，不是概率，也不保证落在 [0, 1] —— 实测把 600 点
+            # 整段喂给按 10 步训练的模型，分数落在 1.06~1.99，此时阈值 0.8 低于
+            # 分布下限、什么都拦不住。需要与训练口径一致的分数请用
+            # ``authenticate_windowed_signal``。
+            score = float(prediction.item())
+
+            # NaN / Inf 不是「分数很低」，而是「这次没算出有效分数」。
+            # NaN 参与 >= 比较恒为 False，若照原样返回，故障会被读成
+            # 「用户不是本人」，与 status='error' 想表达的完全是两件事。
+            if not math.isfinite(score):
+                raise ValueError(f"模型输出不是有限数值（{score!r}），本次不产出分数")
+
             authenticated = score >= threshold
             
             # 构建结果字典
@@ -117,7 +172,8 @@ def authenticate_single_signal(model: nn.Module,
                 'authenticated': bool(authenticated),
                 'score': float(score),
                 'threshold': float(threshold),
-                'signal_type': signal_type
+                'signal_type': signal_type,
+                'score_semantics': SCORE_SEMANTICS_SIMILARITY,
             }
             
             logger.info(f"{signal_type}身份验证: 得分={score:.4f}, 认证结果={'通过' if authenticated else '失败'}")
@@ -192,6 +248,244 @@ def authenticate_single_signal(model: nn.Module,
             'signal_type': signal_type,
             'error': str(e)
         }
+
+def score_signal_windows(model: nn.Module,
+                         input_signal,
+                         window_length: int = 10,
+                         target_length: Optional[int] = None,
+                         device: Optional[torch.device] = None) -> Dict[str, Any]:
+    """
+    把信号切成等长窗口，一次前向拿到**每个窗口**的分数（不作判定）。
+
+    这是窗口口径的公共底座：单信号判定（`authenticate_windowed_signal`）与
+    注册自检（把多轮样本拼成一批）都走它，避免各自复制一份切窗与前向逻辑。
+    注册自检需要的是「每条样本各自的分数」，而不是一个聚合值 —— 拿聚合值去
+    反推每轮是否通过，等于把判定权交给了错误的刻度。
+
+    尾部不足一个窗口的点会被**丢弃**，不补零：补零等于往信号里塞一段模型从没
+    见过的「静止段」，反而会把分数拉低。量产链路上 `target_length` 会先把长度
+    对齐到窗口整数倍（600 = 60 × 10），所以不会真的丢数据。
+
+    Returns:
+        status == 'ok' 时：
+            ``scores``       每个窗口的分数（长度 == windows）
+            ``windows``      窗口数
+            ``window_length``实际生效的窗口长度（已转成 int）
+            ``data``         补齐/截断后的信号（画图与排查用）
+            ``window_score_min`` / ``window_score_max``
+        status == 'error' 时带 ``error`` 摘要，``scores`` 为空、``data`` 为空数组。
+    """
+    try:
+        model.eval()
+
+        # 窗口长度必须能当整数用：配置页填个 "10" 字符串过来时不该直接崩，
+        # 填 0 或负数则必须明确拒绝，否则下面的整除会退化成除零。
+        try:
+            window_length = int(window_length)
+        except (TypeError, ValueError):
+            raise ValueError(f"窗口长度必须是正整数: {window_length!r}")
+        if window_length <= 0:
+            raise ValueError(f"窗口长度必须是正整数: {window_length!r}")
+
+        if device is None:
+            device = next(model.parameters()).device
+
+        data = _fit_length(_as_1d_signal(input_signal), target_length)
+        if data.size == 0:
+            raise ValueError('输入信号为空，无法切窗')
+
+        count = data.size // window_length
+        if count == 0:
+            # 不足一个窗口：补零凑够一个，与训练侧「数据太短就填充」同一口径
+            padded = np.zeros(window_length, dtype=data.dtype)
+            padded[:data.size] = data
+            data = padded
+            count = 1
+        else:
+            data = data[:count * window_length]
+
+        tensor = torch.as_tensor(
+            data.reshape(count, window_length, 1), dtype=torch.float32,
+        ).to(device)
+
+        with torch.no_grad():
+            output = model(tensor)
+
+        scores = output.detach().reshape(-1).cpu().numpy().astype(np.float64)
+        if scores.size != count:
+            raise ValueError(f"模型输出长度 {scores.size} 与窗口数 {count} 不一致")
+
+        # NaN / Inf 不是「分数很低」：NaN 参与比较恒为 False，若放过去会把
+        # 「没算出来」静默读成「不像」。这里直接判失败，由调用方转成 status=error。
+        if not np.all(np.isfinite(scores)):
+            raise ValueError('模型输出包含非有限值（NaN/Inf），本次不产出分数')
+
+        return {
+            'status': 'ok',
+            'scores': [float(v) for v in scores],
+            'windows': int(count),
+            'window_length': int(window_length),
+            'data': data,
+            'window_score_min': float(scores.min()),
+            'window_score_max': float(scores.max()),
+        }
+
+    except Exception as exc:
+        logger.error(f"窗口打分失败: {exc}")
+        return {
+            'status': 'error',
+            'scores': [],
+            'windows': 0,
+            'window_length': window_length,
+            'data': np.empty(0),
+            'error': str(exc),
+        }
+
+
+def authenticate_windowed_signal(model: nn.Module,
+                                 input_signal,
+                                 threshold: float = 0.5,
+                                 window_length: int = 10,
+                                 aggregation: str = 'mean',
+                                 target_length: Optional[int] = None,
+                                 signal_type: str = 'ecg',
+                                 device: Optional[torch.device] = None,
+                                 visualize: bool = False,
+                                 visualization_path: Optional[str] = None) -> Dict[str, Any]:
+    """
+    按**训练时的窗口口径**给一段信号打分。
+
+    为什么需要它
+    ------------------------------------------------------------------
+    训练是按 ``window_length`` 个采样点切窗的（`device.py::TRAIN_SEQUENCE_LENGTH`），
+    而验证侧原先把整段信号（600 点）一次性喂进网络。``BiLSTMWithAttention``
+    对序列长度没有约束，所以两种输入都能算出一个数 —— 但那是**两个不同的问题**：
+    整段 600 点时注意力在 600 个时间步上汇聚，分数整体漂到训练目标的 1.6 倍左右，
+    阈值也就失去了参照。实测同一段信号：整段口径 1.61、窗口均值口径 0.99，
+    而模型训练目标正是 1.0。
+
+    这里把信号切成等长窗口、**一次批量前向**拿到每个窗口的分数，再按
+    ``aggregation`` 聚合成一个判定分数。好处有三：
+      1. 判定分数与训练目标同刻度，阈值可解释；
+      2. 批量前向远比「整段长序列」快（实测 600 点：约 378ms → 约 25ms）；
+      3. 逐窗口分数一并返回，能看出「是一段特别像、还是整体都像」。
+
+    Args:
+        model: 训练好的模型
+        input_signal: 一维信号（numpy / list / torch 均可）
+        threshold: 相似度阈值（在窗口聚合后的刻度上比较）
+        window_length: 每个窗口的采样点数，必须与训练侧一致
+        aggregation: 窗口分数聚合方式，见 ``AGGREGATIONS``
+        target_length: 先把信号补齐/截断到这个长度再切窗；None 表示不调整
+        signal_type: 信号类型标记，仅用于结果与日志
+        device: 计算设备，默认跟随模型所在设备
+        visualize: 是否输出窗口分数分布图
+        visualization_path: 图片保存路径
+
+    Returns:
+        Dict[str, Any]: 与 ``authenticate_single_signal`` 同构的结果，额外带
+        ``windows`` / ``window_length`` / ``aggregation`` / ``window_scores`` /
+        ``score_semantics``。推理异常或输出非有限值时 ``status == 'error'``。
+    """
+    try:
+        if aggregation not in AGGREGATIONS:
+            raise ValueError(f"不支持的聚合方式: {aggregation!r}（可选 {AGGREGATIONS}）")
+
+        prepared = score_signal_windows(
+            model, input_signal, window_length=window_length,
+            target_length=target_length, device=device,
+        )
+        if prepared['status'] == 'error':
+            raise ValueError(prepared.get('error') or '窗口打分失败')
+
+        window_length = prepared['window_length']
+        count = prepared['windows']
+        scores = np.asarray(prepared['scores'], dtype=np.float64)
+        data = prepared['data']
+
+        score = _aggregate_scores(scores, aggregation)
+        authenticated = score >= threshold
+
+        result = {
+            'status': 'ok',
+            'authenticated': bool(authenticated),
+            'score': float(score),
+            'threshold': float(threshold),
+            'signal_type': signal_type,
+            'windows': int(count),
+            'window_length': int(window_length),
+            'aggregation': aggregation,
+            'window_score_min': float(scores.min()),
+            'window_score_max': float(scores.max()),
+            'window_scores': [float(v) for v in scores],
+            'score_semantics': SCORE_SEMANTICS_SIMILARITY,
+        }
+
+        logger.info(
+            "%s窗口口径验证: %d 个窗口 × %d 点, 聚合=%s, 得分=%.4f "
+            "(窗口区间 %.4f~%.4f), 阈值=%.2f, 结果=%s",
+            signal_type.upper(), count, window_length, aggregation,
+            score, result['window_score_min'], result['window_score_max'],
+            threshold, '通过' if authenticated else '失败',
+        )
+
+        if visualize:
+            try:
+                import os
+                import tempfile
+
+                import matplotlib.pyplot as plt
+
+                if visualization_path is None:
+                    visualization_path = os.path.join(
+                        tempfile.gettempdir(),
+                        f"{signal_type}_windowed_auth_{int(time.time())}.png")
+                os.makedirs(os.path.dirname(os.path.abspath(visualization_path)),
+                            exist_ok=True)
+
+                plt.rcParams['font.sans-serif'] = ['SimHei']
+                plt.rcParams['axes.unicode_minus'] = False
+
+                fig, axes = plt.subplots(2, 1, figsize=(12, 6))
+                axes[0].plot(data)
+                axes[0].set_title(f'{signal_type.upper()} 信号（{count} 个窗口）')
+                axes[0].set_xlabel('采样点')
+
+                axes[1].plot(range(count), scores, marker='o', markersize=2)
+                axes[1].axhline(y=threshold, color='black', linestyle='--',
+                                label='阈值')
+                axes[1].axhline(y=1.0, color='gray', linestyle=':',
+                                label='训练目标 1.0')
+                axes[1].set_title(f'窗口分数（聚合 {aggregation} = {score:.4f}）')
+                axes[1].set_xlabel('窗口序号')
+                axes[1].legend()
+
+                plt.tight_layout()
+                plt.savefig(visualization_path)
+                plt.close(fig)
+                result['visualization_path'] = visualization_path
+                logger.info(f"窗口口径验证可视化已保存到 {visualization_path}")
+            except Exception as exc:
+                logger.warning(f"生成窗口口径可视化失败: {exc}")
+
+        return result
+
+    except Exception as exc:
+        # 与 authenticate_single_signal 同一口径：故障不等于「相似度为零」，
+        # 用 status 把两者分开，score 仍固定 0.0（fail-closed）。
+        logger.error(f"窗口口径验证过程中出错: {exc}")
+        return {
+            'status': 'error',
+            'authenticated': False,
+            'score': 0.0,
+            'threshold': float(threshold),
+            'signal_type': signal_type,
+            'window_length': window_length,
+            'aggregation': aggregation,
+            'score_semantics': SCORE_SEMANTICS_SIMILARITY,
+            'error': str(exc),
+        }
+
 
 def authenticate_dual_signals(ecg_model: nn.Module, 
                              ppg_model: nn.Module, 
