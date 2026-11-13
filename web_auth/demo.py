@@ -27,7 +27,7 @@
 import random
 
 from web_auth.config import DEMO_MODE, logger
-from web_auth.services.signals import heart_rate_to_ecg
+from web_auth.services.signals import heart_rate_to_ecg, morphology_for
 
 __all__ = ['DEMO_MODE', 'demo_degrade', 'is_enabled', 'synthetic_signal_series']
 
@@ -48,16 +48,30 @@ _SYNTHETIC_BPM_CENTER = 70.0
 _SYNTHETIC_BPM_JITTER = 10.0
 
 
-def synthetic_signal_series(count):
+def synthetic_signal_series(count, subject=None):
     """
     生成 count 个合成数据点（随机心率经「心率 → ECG」变换）。
 
     仅在演示模式下调用。
+
+    参数:
+        count: 生成的数据点个数
+        subject: 主体标识。给出时按它派生一组稳定的形态参数，使不同主体
+            的合成波形互不相同；不给出（默认）则沿用原有的统一波形。
+
+            ⚠️ 波形不同**不等于**判定能区分主体。实测（清单 P3-1 第二步）
+            在 10 点/窗的表示下同人与异人的分数分布完全重叠，二者都远超
+            阈值。这个参数只用于让「波形与心率解耦」，不具备演示「拒绝
+            他人」的能力。
+
+    形态参数按 subject 派生后只算一次，不在逐点循环里重复计算。
     """
+    morphology = morphology_for(subject)
     return [
         heart_rate_to_ecg(
             _SYNTHETIC_BPM_CENTER
-            + random.uniform(-_SYNTHETIC_BPM_JITTER, _SYNTHETIC_BPM_JITTER)
+            + random.uniform(-_SYNTHETIC_BPM_JITTER, _SYNTHETIC_BPM_JITTER),
+            morphology=morphology,
         )
         for _ in range(count)
     ]
