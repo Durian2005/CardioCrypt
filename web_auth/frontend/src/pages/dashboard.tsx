@@ -139,7 +139,6 @@ export default function DashboardPage() {
       text: deviceOnline ? '已连接' : '未连接',
       hint: deviceOnline ? 'ONLINE' : 'OFFLINE',
       tone: 'primary' as const,
-      action: true,
     },
   ]
 
@@ -411,7 +410,6 @@ function MetricCard({
   text,
   hint,
   tone,
-  action,
 }: {
   icon: LucideIcon
   label: string
@@ -420,7 +418,6 @@ function MetricCard({
   text?: string
   hint: string
   tone: 'primary' | 'accent' | 'success'
-  action?: boolean
 }) {
   const toneCls = {
     primary: 'text-[hsl(var(--primary))] bg-[hsl(var(--primary)/0.12)]',

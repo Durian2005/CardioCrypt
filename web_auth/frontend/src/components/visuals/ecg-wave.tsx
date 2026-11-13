@@ -157,28 +157,3 @@ export function EcgWave({
     </div>
   )
 }
-
-/** 迷你静态波形（用于卡片点缀，不跑动画以省性能） */
-export function EcgSpark({ className }: { className?: string }) {
-  const W = 300
-  const H = 60
-  return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      className={cn('text-[hsl(var(--primary))]', className)}
-      aria-hidden
-    >
-      <path
-        d={buildPath(0.2, W, H)}
-        fill="none"
-        stroke="currentColor"
-        strokeOpacity="0.55"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-        strokeLinecap="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  )
-}

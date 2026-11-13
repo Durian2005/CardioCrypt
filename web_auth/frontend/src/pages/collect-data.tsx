@@ -88,7 +88,7 @@ export default function CollectDataPage() {
   const demoMode = info.demoMode === true
 
   const [step, setStep] = useState<StepKey>('scan')
-  const { deviceType, setDeviceType, scanning, devices, onScan, reset: resetScan } =
+  const { deviceType, setDeviceType, scanning, devices, onScan } =
     useDeviceScan('未发现可用设备，请确认设备已开启并处于配对模式')
   const [connected, setConnected] = useState<DeviceItem | null>(null)
 

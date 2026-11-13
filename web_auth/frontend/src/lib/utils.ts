@@ -22,8 +22,3 @@ export function formatDateTime(value: string | number | Date) {
     d.getHours()
   )}:${pad(d.getMinutes())}`
 }
-
-/** 数值夹取 */
-export function clamp(v: number, min: number, max: number) {
-  return Math.min(Math.max(v, min), max)
-}

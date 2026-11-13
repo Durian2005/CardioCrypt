@@ -151,3 +151,7 @@ web_auth/.flask_secret_key
 
 # ===== 内部分析文档（含本机环境描述，不入公开仓库）=====
 项目整理报告.md
+CardioCrypt-后端优化建议.md
+
+# ===== 本地其他项目的工作目录（不属于本仓库）=====
+time-machine-mvp-plan/

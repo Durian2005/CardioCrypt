@@ -461,7 +461,6 @@ export interface RealtimeHealthData {
 export const dashboard = {
   data: () => apiGet<DashboardData>('/api/dashboard_data'),
   realtime: () => apiGet<RealtimeHealthData>('/api/realtime_health_data'),
-  trends: () => apiGet<Record<string, unknown>>('/api/health_trends'),
 }
 
 /* ---------------- 管理后台 ---------------- */

@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input, Label } from '@/components/ui/input'
 import { FadeUp, StaggerGroup, StaggerItem } from '@/components/motion'
-import { EcgWave } from '@/components/visuals/ecg-wave'
 import { errorText, postFormRaw } from '@/lib/api'
 
 /**

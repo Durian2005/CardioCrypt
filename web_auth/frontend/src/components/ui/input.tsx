@@ -1,6 +1,5 @@
 import * as React from 'react'
 import * as LabelPrimitive from '@radix-ui/react-label'
-import { cva, type VariantProps } from 'class-variance-authority'
 import { cn } from '@/lib/utils'
 
 /**
@@ -80,21 +79,3 @@ export const Label = React.forwardRef<
   />
 ))
 Label.displayName = 'Label'
-
-export const Textarea = React.forwardRef<
-  HTMLTextAreaElement,
-  React.TextareaHTMLAttributes<HTMLTextAreaElement>
->(({ className, ...props }, ref) => (
-  <textarea
-    ref={ref}
-    className={cn(
-      'flex min-h-[80px] w-full rounded-[var(--radius-md)] border border-[hsl(var(--border))] ' +
-        'bg-[hsl(var(--input)/0.35)] px-3.5 py-2.5 text-sm text-[hsl(var(--foreground))] outline-none ' +
-        'placeholder:text-[hsl(var(--muted-foreground)/0.75)] transition-all duration-250 ' +
-        'focus:border-[hsl(var(--primary)/0.7)] focus:shadow-[0_0_0_3px_hsl(var(--primary)/0.12)]',
-      className
-    )}
-    {...props}
-  />
-))
-Textarea.displayName = 'Textarea'

@@ -13,80 +13,53 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
 
   /* 圆角 */
-  --radius-xs: 0.375rem;
   --radius-sm: 0.5rem;
   --radius-md: 0.75rem;
   --radius-lg: 1rem;
   --radius-xl: 1.25rem;
   --radius-2xl: 1.5rem;
-
-  /* 品牌色阶 —— 青蓝（主色） */
-  --color-brand-50: #eef8ff;
-  --color-brand-100: #d9efff;
-  --color-brand-200: #bce3ff;
-  --color-brand-300: #8ed2ff;
-  --color-brand-400: #59b8ff;
-  --color-brand-500: #3399f5;
-  --color-brand-600: #1e79da;
-  --color-brand-700: #1a61b0;
-  --color-brand-800: #1b528f;
-  --color-brand-900: #1b4676;
-
-  /* 强调色 —— 青绿（CTA / 成功态） */
-  --color-accent-300: #6ee7d3;
-  --color-accent-400: #34d3b8;
-  --color-accent-500: #10b99e;
-  --color-accent-600: #0d9483;
-  --color-accent-700: #0f766e;
-
-  /* 语义色 */
-  --color-success: #10b99e;
-  --color-warning: #f59e0b;
-  --color-danger: #ef4444;
-
-  /* 语义表面（深色基底） */
-  --color-surface-0: #080b14;
-  --color-surface-1: #0d1220;
-  --color-surface-2: #131a2b;
-  --color-surface-3: #1a2338;
 }
 
-/* ---------- 主题变量（HSL，供 shadcn 风格组件消费） ---------- */
+/* 配色只有一套：下面 :root / .light 里的 HSL 三分量变量。
+   组件里统一以 hsl() 包裹 CSS 变量（并可用斜杠追加透明度），
+   因此**所有被引用的颜色变量都必须在这里以 HSL 三分量形式定义** ——
+   写成 hex 或带 `--color-` 前缀都会让整条声明失效。 */
+
+/* ---------- 主题变量（HSL 三分量，供组件侧 hsl() 消费） ---------- */
 :root {
   --background: 222 47% 5%;
   --foreground: 213 31% 94%;
-
-  --card: 222 40% 8%;
-  --card-foreground: 213 31% 94%;
-
-  --popover: 222 44% 7%;
-  --popover-foreground: 213 31% 94%;
 
   --primary: 208 85% 58%;
   --primary-foreground: 222 47% 6%;
 
   --secondary: 220 28% 14%;
-  --secondary-foreground: 213 31% 94%;
 
-  --muted: 220 26% 13%;
   --muted-foreground: 215 20% 62%;
 
   --accent: 172 75% 42%;
   --accent-foreground: 222 47% 6%;
+  /* CTA hover 的加深态 */
+  --accent-600: 172 84% 32%;
 
   --destructive: 0 72% 58%;
   --destructive-foreground: 0 0% 100%;
+
+  /* 语义色：徽章、仪表盘状态点与告警条 */
+  --success: 170 84% 39%;
+  --warning: 38 92% 50%;
 
   --border: 218 30% 20%;
   --input: 218 30% 18%;
   --ring: 208 85% 58%;
 
+  /* 内嵌区块底色（比玻璃卡片再低一层，用于卡内分区） */
+  --surface-1: 224 42% 9%;
+
   /* 玻璃拟态参数 */
   --glass-bg: 222 40% 12%;
   --glass-border: 213 40% 32%;
   --glass-highlight: 213 60% 70%;
-
-  --radius: 0.75rem;
 }
 
 /* 浅色模式：保留可用性，但整体气质仍以深色为主 */
@@ -94,30 +67,29 @@
   --background: 210 40% 98%;
   --foreground: 222 47% 11%;
 
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-
   --primary: 208 78% 46%;
   --primary-foreground: 0 0% 100%;
 
   --secondary: 210 30% 94%;
-  --secondary-foreground: 222 47% 11%;
 
-  --muted: 210 30% 94%;
   --muted-foreground: 215 20% 42%;
 
   --accent: 172 75% 36%;
   --accent-foreground: 0 0% 100%;
+  --accent-600: 172 84% 26%;
 
   --destructive: 0 72% 51%;
   --destructive-foreground: 0 0% 100%;
 
+  /* 亮底下降亮度以保证对比度 */
+  --success: 170 84% 33%;
+  --warning: 32 95% 40%;
+
   --border: 214 26% 88%;
   --input: 214 26% 88%;
   --ring: 208 78% 46%;
+
+  --surface-1: 210 40% 96%;
 
   --glass-bg: 210 40% 100%;
   --glass-border: 214 30% 82%;
