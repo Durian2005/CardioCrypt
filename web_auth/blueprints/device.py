@@ -537,8 +537,15 @@ def start_data_collection():
                     # 创建标签（全部为1，表示本人）
                     labels = np.ones(num_sequences)
                     
+                    # 训练窗口矩阵 [样本数, 窗口长度]。
+                    # 它同时是两样东西：训练输入，以及后续「与注册样本比对」的
+                    # 模板来源 —— 同一份数据，不为此再算一遍。
+                    window_matrix = all_data.reshape(num_sequences, sequence_length)
+
                     # 创建PyTorch数据集和加载器
-                    x_tensor = torch.FloatTensor(all_data.reshape(num_sequences, sequence_length, 1))
+                    x_tensor = torch.FloatTensor(
+                        window_matrix.reshape(num_sequences, sequence_length, 1)
+                    )
                     y_tensor = torch.FloatTensor(labels).unsqueeze(1)
                     dataset = TensorDataset(x_tensor, y_tensor)
                     train_loader = DataLoader(dataset, batch_size=TRAIN_BATCH_SIZE, shuffle=True)
@@ -615,7 +622,10 @@ def start_data_collection():
                     }
                     
                     # 保存模型和元数据
-                    save_model(model, model_path, metadata)
+                    #
+                    # 模板与模型写进同一个文件：删除用户时只需删一个路径，
+                    # 不会出现「模型没了、模板还在」这类不一致。
+                    save_model(model, model_path, metadata, template=window_matrix)
                     
                     # 添加到用户模型缓存 —— 必须走统一的写入入口：
                     # 直接写字典会绕过 LRU 的锁与 MAX_CACHED_MODELS 上限。

@@ -10,10 +10,11 @@
 
 import copy
 import os
+import numpy as np
 import torch
 import torch.nn as nn
 from datetime import datetime
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Optional, Tuple
 
 from ecgppg_system.models.bilstm import BiLSTMWithAttention
 from ecgppg_system.utils.logger import logger
@@ -60,7 +61,45 @@ def _model_attr(model: nn.Module, key: str):
     return value
 
 
-def save_model(model: nn.Module, save_path: str, metadata: Dict[str, Any] = None) -> bool:
+def _as_template_tensor(template):
+    """
+    把注册模板整理成 ``[窗口数, 窗口长度]`` 的 float32 张量。
+
+    只接受二维输入：模板的语义就是「若干条等长窗口」。一维数组通常是被误传的
+    整段信号 —— 存进去也能读出来，但后续逐窗比对会拿着形状不对的东西静默算错，
+    所以这里直接拒收并留日志，而不是尽力猜它想表达什么。
+
+    返回 None 表示「这份存档不带模板」，与「模板是空数组」是同一件事：
+    两者都不该让保存失败，只是失去「与注册样本比对」这一能力。
+    """
+    if template is None:
+        return None
+    try:
+        if torch.is_tensor(template):
+            array = template.detach().cpu().numpy()
+        else:
+            array = np.asarray(template)
+    except Exception as exc:
+        logger.warning("模板无法转换为数组，跳过保存: %s", exc)
+        return None
+
+    if array.ndim != 2:
+        logger.warning(
+            "模板应为二维 [窗口数, 窗口长度]，实际形状为 %s，跳过保存", array.shape,
+        )
+        return None
+    if array.size == 0:
+        logger.warning("模板为空，跳过保存")
+        return None
+    if not np.all(np.isfinite(array)):
+        logger.warning("模板包含非有限值（NaN/Inf），跳过保存")
+        return None
+
+    return torch.as_tensor(np.ascontiguousarray(array), dtype=torch.float32)
+
+
+def save_model(model: nn.Module, save_path: str, metadata: Dict[str, Any] = None,
+               template=None) -> bool:
     """
     保存模型和相关元数据
     
@@ -68,6 +107,11 @@ def save_model(model: nn.Module, save_path: str, metadata: Dict[str, Any] = None
         model: 要保存的模型
         save_path: 保存路径
         metadata: 要保存的元数据
+        template: 注册时用于训练的窗口矩阵 ``[窗口数, 窗口长度]``。
+            与模型存在**同一个文件**里，而不是另开一个文件：
+            另存会让「删模型」与「删模板」变成两件必须同时记得的事，
+            也会多出一处需要防路径越界的写入点。存成同级的张量键，
+            生命周期天然一致，且 ``weights_only=True`` 照样能读。
         
     Returns:
         bool: 是否成功保存
@@ -83,6 +127,20 @@ def save_model(model: nn.Module, save_path: str, metadata: Dict[str, Any] = None
             'save_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'metadata': copy.deepcopy(metadata or {}),
         }
+
+        # 注册模板：只放张量，不放 metadata —— metadata 必须保持「只含基础类型」，
+        # 否则 weights_only=True 会拒绝加载整份存档。
+        template_tensor = _as_template_tensor(template)
+        if template_tensor is not None:
+            save_dict['template_windows'] = template_tensor
+            # 在 metadata 里留一份形状摘要：不读张量也能知道这份存档带模板、
+            # 窗口长度是多少，便于排查「按错误的窗口长度去比对」。
+            save_dict['metadata']['template'] = {
+                'windows': int(template_tensor.shape[0]),
+                'window_length': int(template_tensor.shape[1]),
+            }
+        else:
+            save_dict['metadata'].setdefault('template', None)
 
         # 顶层 input_size 是旧格式的兼容字段，load_model 仍会先读它
         if 'input_size' not in save_dict['metadata']:
@@ -211,6 +269,47 @@ def load_model(model_path: str, device: torch.device = None) -> Tuple[nn.Module,
     except Exception as e:
         logger.error(f"加载模型失败: {str(e)}")
         return None, None
+
+def load_template(model_path: str) -> Optional[np.ndarray]:
+    """
+    读取某个模型存档附带的注册模板（若干等长窗口）。
+
+    只读一个键，**不重建网络也不加载权重** —— 与模板比对时模型并不参与，
+    没必要为此付一次结构重建的开销。
+
+    Args:
+        model_path: 模型路径
+
+    Returns:
+        ``[窗口数, 窗口长度]`` 的 float64 数组；存档里没有模板（旧存档、
+        或注册时没传）时返回 None。文件读不出来同样返回 None —— 调用方
+        据此降级为「只按模型分数判定」，而不是让整次认证失败。
+    """
+    try:
+        # 与 load_model 同一口径：锁死 weights_only，模板是纯数值张量，
+        # 不需要放宽反序列化范围。
+        checkpoint = torch.load(model_path, map_location='cpu', weights_only=True)
+    except Exception as exc:
+        logger.error("读取注册模板失败: %s", exc)
+        return None
+
+    if not isinstance(checkpoint, dict):
+        return None
+
+    stored = checkpoint.get('template_windows')
+    if stored is None:
+        return None
+
+    array = stored.detach().cpu().numpy() if torch.is_tensor(stored) else np.asarray(stored)
+    if array.ndim != 2 or array.size == 0:
+        logger.warning("存档中的模板形状异常(%s)，按「无模板」处理", getattr(array, 'shape', None))
+        return None
+    if not np.all(np.isfinite(array)):
+        logger.warning("存档中的模板包含非有限值，按「无模板」处理")
+        return None
+
+    return array.astype(np.float64, copy=False)
+
 
 def extract_model_metadata(checkpoint: Dict[str, Any]) -> Dict[str, Any]:
     """
