@@ -198,6 +198,45 @@ ADMIN_PASSWORD_HASH = generate_password_hash(
 )  # 默认口令仅供本地开发，部署前务必修改
 
 
+# --- 部署形态护栏 -----------------------------------------------------------
+# 默认管理员口令只服务于本机开发。显式声明对外监听时若仍沿用默认口令，
+# 应用工厂会拒绝启动，避免把可登录的管理后台直接暴露到网络上。
+FLASK_HOST = (os.environ.get('FLASK_HOST', '127.0.0.1').strip() or '127.0.0.1').lower()
+LOOPBACK_HOSTS = frozenset(('127.0.0.1', 'localhost', '::1'))
+
+
+def password_is_default(env_value=None):
+    """判断管理员口令是否等同于默认口令。
+
+    「未显式设置」与「设成空值」都要算默认：空口令比默认口令更危险，
+    若只判 ``'ADMIN_PASSWORD' not in os.environ``，``ADMIN_PASSWORD=""``
+    会绕过护栏。
+    """
+    value = (os.environ.get('ADMIN_PASSWORD', '') if env_value is None
+             else env_value)
+    return (value or '').strip() in ('', 'admin123')
+
+
+ADMIN_PASSWORD_IS_DEFAULT = password_is_default()
+
+
+def check_deployment_guard(host, using_default_password):
+    """校验「监听地址 + 管理员口令」组合，不合规时拒绝启动。
+
+    抽成纯函数是为了让行为契约可以直接测试：配置在模块导入时求值，
+    用 reload 模拟环境会污染整个测试会话的全局状态。
+
+    返回 ``True`` 表示允许启动；不满足条件时抛 ``RuntimeError``。
+    """
+    if host in LOOPBACK_HOSTS or not using_default_password:
+        return True
+    raise RuntimeError(
+        '监听地址 %s 不是本机回环地址，但 ADMIN_PASSWORD 未设置（仍使用默认口令）。'
+        '对外提供服务前请显式设置 ADMIN_PASSWORD / ADMIN_USERNAME；'
+        '仅本机试用时把 FLASK_HOST 设为 127.0.0.1。' % host
+    )
+
+
 # --- CSRF 保护 -------------------------------------------------------------
 # 所有写操作（POST/PUT/PATCH/DELETE）都必须携带与会话绑定的令牌，
 # 否则一律按跨站请求伪造拒绝。GET/HEAD/OPTIONS/TRACE 是规范定义的

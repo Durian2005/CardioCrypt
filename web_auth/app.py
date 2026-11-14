@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from web_auth import create_app
-from web_auth.config import logger
+from web_auth.config import FLASK_HOST, logger
 
 # 模块级单例：WSGI 服务器与本模块的 __main__ 分支都从这里取应用
 app = create_app()
@@ -39,7 +39,8 @@ if __name__ == '__main__':
     # 调试模式默认关闭：一旦开启，Werkzeug 会暴露可执行任意代码的交互式调试器，
     # 并显示完整堆栈与配置。仅在完全可信的本机环境下临时用 FLASK_DEBUG=1 打开。
     _debug = os.environ.get('FLASK_DEBUG', '0').strip().lower() in ('1', 'true', 'yes', 'on')
-    _host = os.environ.get('FLASK_HOST', '127.0.0.1').strip() or '127.0.0.1'
+    # 与 create_app() 的部署护栏共用同一个取值，避免两处口径漂移。
+    _host = FLASK_HOST
     try:
         _port = int(os.environ.get('FLASK_PORT', '5000'))
     except ValueError:

@@ -30,8 +30,10 @@ from flask import Flask, flash, jsonify, redirect, request, session, url_for
 
 from web_auth import core, state
 from web_auth.config import (
+    ADMIN_PASSWORD_IS_DEFAULT,
     CSRF_ENABLED,
     DEMO_MODE,
+    FLASK_HOST,
     FRONTEND_MODE,
     MAX_CONTENT_LENGTH,
     MONGO_SERVER_SELECTION_TIMEOUT_MS,
@@ -39,6 +41,7 @@ from web_auth.config import (
     PERMANENT_SESSION_LIFETIME,
     SECRET_KEY,
     SECRET_KEY_FROM_FILE,
+    check_deployment_guard,
     logger,
 )
 from web_auth.extensions import CSRF, mongo
@@ -102,6 +105,9 @@ def create_app(config_overrides=None):
         config_overrides: 可选的配置覆盖字典，主要用于测试
                           （例如 `{'TESTING': True}`）。
     """
+    # 部署形态护栏放在组装的第一步：拒绝启动时不应绑定数据库或注册蓝图。
+    check_deployment_guard(FLASK_HOST, ADMIN_PASSWORD_IS_DEFAULT)
+
     app = Flask(__name__)
 
     app.secret_key = SECRET_KEY
