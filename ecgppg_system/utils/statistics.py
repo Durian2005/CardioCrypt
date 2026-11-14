@@ -107,6 +107,9 @@ class StatisticalAnalyzer:
         signal = np.asarray(signal).flatten()
         
         # 基础统计量
+        # 一次取出两个分位数：q1 / q3 / iqr 共用，避免对同一数组算四遍
+        q1, q3 = np.percentile(signal, [25, 75])
+
         stats = {
             'length': len(signal),
             'mean': float(np.mean(signal)),
@@ -117,9 +120,9 @@ class StatisticalAnalyzer:
             'skewness': float(self._calculate_skewness(signal)),
             'kurtosis': float(self._calculate_kurtosis(signal)),
             'range': float(np.ptp(signal)),
-            'q1': float(np.percentile(signal, 25)),
-            'q3': float(np.percentile(signal, 75)),
-            'iqr': float(np.percentile(signal, 75) - np.percentile(signal, 25)),
+            'q1': float(q1),
+            'q3': float(q3),
+            'iqr': float(q3 - q1),
             'missing_values': int(np.sum(np.isnan(signal))),
             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         }
@@ -320,6 +323,9 @@ class StatisticalAnalyzer:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         report_file = os.path.join(output_dir, f"{self.signal_type}_stats_report_{timestamp}.txt")
         
+        # 报告正文与相似度热图遍历的是同一批信号对，算一次供两处复用
+        comparisons = {}
+
         # 准备报告内容
         with open(report_file, 'w', encoding='utf-8') as f:
             f.write("=" * 80 + "\n")
@@ -383,8 +389,10 @@ class StatisticalAnalyzer:
                 for i in range(len(signal_names)):
                     for j in range(i+1, len(signal_names)):
                         try:
-                            comparison = self.compare_signals(signal_names[i], signal_names[j])
-                            
+                            pair = (signal_names[i], signal_names[j])
+                            comparison = self.compare_signals(*pair)
+                            comparisons[pair] = comparison
+
                             f.write(f"比较: {signal_names[i]} vs {signal_names[j]}\n")
                             f.write(f"  相似度评分: {comparison['similarity_score']:.2f}%\n")
                             f.write("  差异分析:\n")
@@ -408,7 +416,7 @@ class StatisticalAnalyzer:
             plots_dir = os.path.join(output_dir, f"stats_plots_{timestamp}")
             os.makedirs(plots_dir, exist_ok=True)
             
-            self._generate_plots(plots_dir)
+            self._generate_plots(plots_dir, comparisons)
             
             # 添加图表信息到报告
             with open(report_file, 'a', encoding='utf-8') as f:
@@ -433,12 +441,14 @@ class StatisticalAnalyzer:
         logger.info(f"统计分析报告已保存到 {report_file}")
         return report_file
     
-    def _generate_plots(self, output_dir: str) -> None:
+    def _generate_plots(self, output_dir: str, comparisons: dict = None) -> None:
         """
         生成分析图表
         
         参数:
             output_dir: 输出目录
+            comparisons: 由 generate_report 预先算好的 {(信号A, 信号B): 比较结果}。
+                直接调用本方法时省略即可，缺失的信号对会自行计算。
         """
         # 设置绘图样式
         sns.set_style("whitegrid")
@@ -486,9 +496,10 @@ class StatisticalAnalyzer:
         # 2. 生成统计量对比图
         if len(self.analysis_results) > 1:
             # 准备数据
-            stats_df = pd.DataFrame()
+            # 循环内只收集行、循环外一次成型：原先每轮 pd.concat 都要整表复制
+            stats_rows = []
             for name, stats in self.analysis_results.items():
-                stats_subset = {
+                stats_rows.append({
                     'name': name,
                     'mean': stats['mean'],
                     'std': stats['std'],
@@ -496,8 +507,8 @@ class StatisticalAnalyzer:
                     'skewness': stats['skewness'],
                     'kurtosis': stats['kurtosis'],
                     'range': stats['range']
-                }
-                stats_df = pd.concat([stats_df, pd.DataFrame([stats_subset])], ignore_index=True)
+                })
+            stats_df = pd.DataFrame(stats_rows)
             
             # 绘制相对比较图
             plt.figure(figsize=(15, 10))
@@ -544,7 +555,10 @@ class StatisticalAnalyzer:
                 similarity_matrix[i, i] = 100  # 自己和自己的相似度是100%
                 for j in range(i+1, n_signals):
                     try:
-                        comparison = self.compare_signals(signal_names[i], signal_names[j])
+                        pair = (signal_names[i], signal_names[j])
+                        comparison = (comparisons or {}).get(pair)
+                        if comparison is None:
+                            comparison = self.compare_signals(*pair)
                         similarity_matrix[i, j] = comparison['similarity_score']
                         similarity_matrix[j, i] = comparison['similarity_score']  # 对称矩阵
                     except Exception:
@@ -572,15 +586,15 @@ class StatisticalAnalyzer:
         plt.figure(figsize=(12, 6))
         
         # 准备数据
-        wave_df = pd.DataFrame()
+        wave_rows = []
         for name, stats in self.analysis_results.items():
-            wave_subset = {
+            wave_rows.append({
                 'name': name,
                 'mean_rate': stats['mean_rate'],
                 'mean_acceleration': stats['mean_acceleration'],
                 'zero_crossing_rate': stats['zero_crossing_rate'] * 100  # 转为百分比
-            }
-            wave_df = pd.concat([wave_df, pd.DataFrame([wave_subset])], ignore_index=True)
+            })
+        wave_df = pd.DataFrame(wave_rows)
         
         # 中文化指标名称
         metric_names = {

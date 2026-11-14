@@ -155,12 +155,25 @@ def check_data_overlap(train_data: torch.utils.data.DataLoader,
     # 为了效率，只检查一部分样本
     check_size = min(50, train_subset.shape[0], test_subset.shape[0])
     
+    # 相关系数矩阵一次算完：逐对调用 np.corrcoef 会反复求均值与方差
+    # （check_size 最大 50 → 最多 2500 次），改为中心化后一次矩阵乘法。
+    # 口径与逐对计算一致；零方差或含 NaN 的样本在 np.corrcoef 下得到 nan，
+    # `nan > 阈值` 恒为 False，这里给 0，同样不会被计入 high_similarities。
+    train_block = train_subset[:check_size].astype(np.float64, copy=False)
+    test_block = test_subset[:check_size].astype(np.float64, copy=False)
+    train_centered = train_block - train_block.mean(axis=1, keepdims=True)
+    test_centered = test_block - test_block.mean(axis=1, keepdims=True)
+    denom = np.linalg.norm(train_centered, axis=1, keepdims=True) @ np.linalg.norm(
+        test_centered, axis=1, keepdims=True).T
+    corr_matrix = np.divide(
+        train_centered @ test_centered.T, denom,
+        out=np.zeros_like(denom), where=denom > 0)
+
     for i in range(check_size):
         for j in range(check_size):
-            # 计算样本间的相关系数
-            corr = np.corrcoef(train_subset[i], test_subset[j])[0, 1]
+            corr = corr_matrix[i, j]
             if corr > similarity_threshold:
-                high_similarities.append((i, j, corr))
+                high_similarities.append((i, j, float(corr)))
     
     # 计算最高相似度
     if high_similarities:

@@ -79,8 +79,32 @@ class SignalPlotter:
             self.highlight_color = 'green'
             
         logger.info(f"初始化{self.signal_type}信号可视化工具: dpi={self.dpi}, figsize={self.figsize}")
-        
-    def plot_signal(self, signal, title=None, x_label="采样点", y_label="幅值", 
+
+    def _finalize(self, fig, filename=None, show=True, saved_message=None):
+        """统一的绘图收尾：保存 → 显示 → 从 pyplot 注册表注销。
+
+        `plt.subplots()` 会把 figure 注册进 pyplot 的全局列表，长驻进程里反复
+        绘图会持续堆积 figure。这里只注销自己这一张（不是 `plt.close('all')`），
+        不影响调用方同时打开的其他 figure。返回的 Figure 对象仍然可用
+        （`fig.savefig()` / `fig.axes` 都不受影响），只是不再由 pyplot 托管。
+
+        `finally` 保证保存或显示抛异常时同样注销；异常照常上抛给各绘图方法的
+        `except`，对外返回值语义不变。
+
+        注意：`create_subplots()` 返回 `(fig, axes)` 供调用方继续作画，不能走
+        这个收尾，应由调用方画完后自行关闭。
+        """
+        try:
+            if filename:
+                fig.savefig(filename, dpi=self.dpi, bbox_inches='tight')
+                logger.info(saved_message or f"图像已保存到: {filename}")
+            if show:
+                plt.show()
+        finally:
+            plt.close(fig)
+        return fig
+
+    def plot_signal(self, signal, title=None, x_label="采样点", y_label="幅值",
                    filename=None, show=True, time_axis=None):
         """
         绘制信号波形
@@ -131,16 +155,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"图像已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"图像已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制信号波形失败: {str(e)}")
@@ -211,16 +228,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"对比图已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"对比图已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制对比图失败: {str(e)}")
@@ -279,16 +289,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"多信号对比图已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"多信号对比图已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制多信号对比图失败: {str(e)}")
@@ -338,16 +341,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"训练历史图已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"训练历史图已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制训练历史失败: {str(e)}")
@@ -412,16 +408,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"预测图已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"预测图已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制预测图失败: {str(e)}")
@@ -480,16 +469,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"峰值检测图已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"峰值检测图已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制峰值检测图失败: {str(e)}")
@@ -531,16 +513,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"相关性热图已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"相关性热图已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制相关性热图失败: {str(e)}")
@@ -593,16 +568,9 @@ class SignalPlotter:
             # 优化布局
             plt.tight_layout()
             
-            # 保存图像
-            if filename:
-                plt.savefig(filename, dpi=self.dpi, bbox_inches='tight')
-                logger.info(f"特征重要性图已保存到: {filename}")
-                
-            # 显示图像
-            if show:
-                plt.show()
-                
-            return fig
+            return self._finalize(
+                fig, filename, show,
+                f"特征重要性图已保存到: {filename}" if filename else None)
             
         except Exception as e:
             logger.error(f"绘制特征重要性图失败: {str(e)}")
