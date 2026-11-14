@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { memo, useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { toast } from 'sonner'
 import {
@@ -43,14 +43,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [realtime, setRealtime] = useState<RealtimeHealthData | null>(null)
-  const [clock, setClock] = useState(formatTime(new Date()))
   const [refreshing, setRefreshing] = useState(false)
-
-  /* 时钟 */
-  useEffect(() => {
-    const id = window.setInterval(() => setClock(formatTime(new Date())), 1000)
-    return () => window.clearInterval(id)
-  }, [])
 
   /* 加载仪表盘数据 */
   const load = async (silent = false) => {
@@ -106,7 +99,7 @@ export default function DashboardPage() {
   // 设备是否在线取自真实来源（进程内有没有已连接的设备句柄），不再写死
   const deviceOnline = (sys?.total_devices ?? 0) > 0
 
-  const metrics = [
+  const metrics = useMemo(() => [
     {
       icon: HeartPulse,
       label: '当前心率',
@@ -140,7 +133,7 @@ export default function DashboardPage() {
       hint: deviceOnline ? 'ONLINE' : 'OFFLINE',
       tone: 'primary' as const,
     },
-  ]
+  ], [realtime, deviceOnline])
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6">
@@ -168,7 +161,7 @@ export default function DashboardPage() {
               <div className="text-xs text-[hsl(var(--muted-foreground))]">
                 当前时间
               </div>
-              <div className="tabular font-mono text-sm font-medium">{clock}</div>
+              <Clock />
             </div>
             <Button
               variant="secondary"
@@ -208,7 +201,7 @@ export default function DashboardPage() {
         <StaggerGroup className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {metrics.map((m) => (
             <StaggerItem key={m.label}>
-              <MetricCard {...m} />
+              <MemoMetricCard {...m} />
             </StaggerItem>
           ))}
         </StaggerGroup>
@@ -402,6 +395,18 @@ function countText(
   return `${count ?? 0} 次`
 }
 
+/** 时钟自持 state：每秒只重渲染这一小块，不再带着整页一起重渲染 */
+function Clock() {
+  const [now, setNow] = useState(() => formatTime(new Date()))
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(formatTime(new Date())), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  return <div className="tabular font-mono text-sm font-medium">{now}</div>
+}
+
 function MetricCard({
   icon: Icon,
   label,
@@ -460,6 +465,9 @@ function MetricCard({
     </Card>
   )
 }
+
+/** 各 prop 都是原始值或稳定引用，父级无关重渲染时跳过未变化的指标卡 */
+const MemoMetricCard = memo(MetricCard)
 
 function ProgressRow({
   label,

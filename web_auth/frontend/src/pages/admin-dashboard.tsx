@@ -356,6 +356,7 @@ export default function AdminDashboardPage() {
                 <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
                   <div className="w-full max-w-xs">
                     <Input
+                      aria-label="搜索用户名"
                       placeholder="搜索用户名…"
                       icon={<Search className="size-4" />}
                       value={query}
@@ -456,6 +457,8 @@ export default function AdminDashboardPage() {
                               <Button
                                 variant="ghost"
                                 size="sm"
+                                aria-label={`删除用户 ${u.username}`}
+                                title={`删除用户 ${u.username}`}
                                 onClick={() => askDelete([u.username])}
                                 className="text-[hsl(var(--destructive))] hover:bg-[hsl(var(--destructive)/0.12)]"
                               >
@@ -540,6 +543,8 @@ export default function AdminDashboardPage() {
 
                       <button
                         type="button"
+                        role="switch"
+                        aria-checked={useCuda}
                         onClick={() => setUseCuda((v) => !v)}
                         className="flex items-center justify-between rounded-[var(--radius-md)] border border-[hsl(var(--border)/0.6)] bg-[hsl(var(--secondary)/0.35)] px-4 py-3.5 transition-colors duration-250 hover:border-[hsl(var(--primary)/0.4)]"
                       >

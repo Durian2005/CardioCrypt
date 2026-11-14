@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '@/lib/utils'
 
 /**
@@ -9,6 +9,9 @@ import { cn } from '@/lib/utils'
  */
 
 const SAMPLES = 400
+/** SVG 视口固定尺寸，提到模块级供 useMemo 与渲染共用 */
+const W = 1000
+const H = 200
 
 /** 生成一段带 PQRST 特征的心电信号（归一化到 -1..1） */
 function beatWave(phase: number): number {
@@ -60,7 +63,7 @@ function buildPath(offset: number, width: number, height: number): string {
   return pts.join(' ')
 }
 
-export function EcgWave({
+function EcgWaveImpl({
   className,
   animated = true,
   strokeClass = 'text-[hsl(var(--primary))]',
@@ -90,9 +93,8 @@ export function EcgWave({
     return () => cancelAnimationFrame(rafRef.current)
   }, [animated])
 
-  const W = 1000
-  const H = 200
-  const path = buildPath(offset, W, H)
+  // 401 次循环 + 字符串拼接只在 offset 变化时重算；父级无关重渲染由 memo 挡下
+  const path = useMemo(() => buildPath(offset, W, H), [offset])
 
   return (
     <div className={cn('relative', className)}>
@@ -157,3 +159,6 @@ export function EcgWave({
     </div>
   )
 }
+
+/** 全站多页复用；props 均为原始值，浅比较即可避免父级重渲染波及波形计算 */
+export const EcgWave = memo(EcgWaveImpl)
