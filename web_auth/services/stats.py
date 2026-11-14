@@ -13,13 +13,15 @@
 
 关于 `auth_history`
 ------------------
-该集合在 `core.init_system()` 里建了 `username + timestamp` 索引，管理后台也有
-「删除某用户的全部历史」逻辑，但**原型阶段从未写入过任何一条**。因此这里的
-认证次数统计目前一律是 0 —— 这是在如实反映「还没有记录」，不是在编数字。
-将来补上写入点后（字段约定见下方常量），这些数字会自动变成真实值，本模块无需改动。
+该集合在 `core.init_system()` 里建了 `username + timestamp` 索引，管理后台有
+「删除某用户的全部历史」逻辑。写入点是认证链路给出结论的那一刻，由本模块的
+`record_auth_result()` 统一落库；读、写两侧共用下面这组字段常量，避免统计
+安静地一直返回 0。集合为空时一律返回 0 —— 这是在如实反映「还没有认证发生」，
+不是在编数字。
 """
 
 import time
+from datetime import datetime
 
 from web_auth import state
 from web_auth.config import logger
@@ -114,6 +116,37 @@ def aggregate_auth_history(username):
         mongo.db.auth_history, {**query, 'result': HISTORY_RESULT_SUCCESS}
     )
     return total, success, total - success, _average_duration(query)
+
+
+def record_auth_result(username, status, started_at=None, demo=False):
+    """把一次已有结论的认证写进 `auth_history`。
+
+    `status` 是验证状态机的原始终态（`success` / `failed` / `error` /
+    `device_error`），这里只把它归一成统计侧的两个取值：成功算 success，
+    其余一律算失败 —— 设备断开和判定不通过对用户是两件事，但都没有通过认证。
+
+    `started_at` 是 `time.time()` 形式的验证开始时刻；缺省时不写耗时字段，
+    聚合侧允许记录缺耗时。演示模式下数据来源是合成信号，记录里带 `demo`
+    便于事后区分，参加统计时与真实事件一视同仁（事件本身确实发生过）。
+
+    写历史是旁路：数据库暂时不可用时只记日志，**绝不改变认证结论**。
+    """
+    doc = {
+        'username': username,
+        'timestamp': datetime.now(),
+        'result': (HISTORY_RESULT_SUCCESS if status == 'success'
+                   else HISTORY_RESULT_FAILURE),
+    }
+    if started_at is not None:
+        doc[HISTORY_DURATION_FIELD] = max(0, int((time.time() - started_at) * 1000))
+    if demo:
+        doc['demo'] = True
+    try:
+        mongo.db.auth_history.insert_one(doc)
+    except Exception as exc:
+        logger.warning("写入认证历史失败（不影响本次结论）: %s", exc)
+        return False
+    return True
 
 
 def build_user_stats(username):

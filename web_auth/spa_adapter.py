@@ -123,6 +123,7 @@ def register_spa(app, mongo, admin_required):
         """退出用户会话，返回 JSON 而非重定向。"""
         session.pop('username', None)
         session.pop('pending_login', None)
+        session.pop('verify_started_at', None)
         logger.info("用户会话已退出")
         return jsonify({'success': True})
 

@@ -8,6 +8,7 @@
 """
 
 import threading
+import time
 from datetime import datetime
 
 import numpy as np
@@ -45,6 +46,7 @@ from web_auth.services.collection import (
     top_up_or_abort,
 )
 from web_auth.services.signals import MODEL_WINDOW_LENGTH, filter_signal_arrays
+from web_auth.services.stats import record_auth_result
 
 bp = Blueprint('auth', __name__)
 
@@ -247,6 +249,9 @@ def start_verification():
         }
     state.touch_state('verification', username)
     
+    # 认证耗时从「发起验证」算到「给出结论」，随会话带到轮询接口一起落库。
+    session['verify_started_at'] = time.time()
+
     # 启动验证线程
     def verify_thread(username, device_info):
         try:
@@ -481,6 +486,16 @@ def verification_status():
             if result['status'] in TERMINAL_VERIFICATION_STATUSES:
                 # 认证结果以真实比对结果为准，不做任何改写
                 demo = bool(result.get('demo'))
+
+                # 结论在这里被消费一次（随后结果会被 pop），历史也只在此
+                # 落一条：成功 / 失败 / 设备断开 / 内部异常全部覆盖，classic
+                # 模板与 SPA 共用同一个轮询接口。写库失败由 stats 内部兜住，
+                # 不改变下面的认证结论。
+                record_auth_result(
+                    username, result['status'],
+                    started_at=session.pop('verify_started_at', None),
+                    demo=demo,
+                )
                 
                 if result['status'] == 'success':
                     # 设置登录会话
@@ -540,4 +555,5 @@ def logout():
     # 留下一段谁也不该看到的状态。
     session.pop('username', None)
     session.pop('pending_login', None)
+    session.pop('verify_started_at', None)
     return redirect(url_for('auth.index'))
