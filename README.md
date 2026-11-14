@@ -124,6 +124,49 @@ venv\Scripts\python.exe -m pytest
 | `tests/test_model_io.py` | 模型存档读写、按存档重建结构、模板窗口与 metadata 契约 |
 | `tests/test_refactor_contracts.py` | 分层重构后各模块的行为契约（默认配置隔离、状态回收、删除流程一致性等） |
 | `tests/test_signal_morphology.py` | 形态参数派生稳定性、默认波形逐点等价、跨主体相异 |
+| `tests/test_deployment_guard.py` | 部署形态护栏：默认口令 + 对外监听必须拒绝启动，回环地址与显式口令下不受影响 |
+
+### 5. 端到端验证
+
+单元测试覆盖不到"进程真的起得来、页面真的走得通"，这部分由 `scripts/verify/`
+下的脚本承担。它们各自在独立临时库上运行、结束时 drop，日志与结构化结果写到
+系统临时目录下的 `cardiocrypt-verify/`，不污染仓库。
+
+```bash
+python scripts/verify/run_all.py              # 全部（含启停服务）
+python scripts/verify/run_all.py --quick      # 只跑不需要起服务的部分
+python scripts/verify/run_all.py --only demo_mode_e2e.py
+```
+
+| 脚本 | 覆盖范围 |
+|---|---|
+| `p2_perf_equivalence.py` | 算法层收尾优化的等价性对照：分位数、比较结果复用、相关系数矩阵、绘图路径 |
+| `demo_mode_e2e.py` | 演示模式全链路：默认关闭时判失败、开启后带标记且判定规则不变 |
+| `batch2_e2e.py` | 仪表盘真实/示意字段标注、请求层超时与 `res.ok` 判定、字段名一致性 |
+| `c_tier_regression.py` | 启动路径与 SPA / classic 双渲染模式回归 |
+| `run_p0_with_service.py` | 认证链路端到端：自行拉起全新 classic 服务后验证并回收 |
+| `desensitize_scan.py` | 公开产物脱敏扫描（`tree` / `worktree` / `commits` / `selftest` 四种模式） |
+
+前置条件只有一项：MongoDB 可达（默认 `mongodb://localhost:27017`，可用
+`VERIFY_MONGO_BASE` 覆盖）。脚本一律用 `sys.executable`，虚拟环境放在哪都能跑。
+
+### 6. 持续集成
+
+`.github/workflows/ci.yml` 在每次推送与 PR 上跑三组作业：
+
+| 作业 | 内容 |
+|---|---|
+| 后端 | `pytest`（MongoDB service）、`pyflakes`、脱敏扫描器自检与全树扫描、忽略规则护栏 |
+| 前端 | `npm ci`、`tsc --noEmit`、`vite build`，并校验构建产物与仓库内容一致 |
+| 端到端 | `scripts/verify/run_all.py`，失败时回显各脚本日志 |
+
+其中两条是本项目踩过的坑，现在由流水线而不是口头约定兜住：
+
+- **产物一致性**：`web_auth/static/dist/` 必须入库，且必须与 `web_auth/frontend/src`
+  的当前内容同源。改了前端源码忘记 build，CI 会直接失败并提示重建。
+- **忽略规则护栏**：`.gitignore` 里的目录规则若缺少根目录锚定，会静默吞掉本该入库
+  的文件（如 `models/` 命中 `ecgppg_system/models/`）。护栏在"已跟踪却仍被忽略命中"
+  时失败。
 
 ## 配置项（环境变量）
 
@@ -131,7 +174,7 @@ venv\Scripts\python.exe -m pytest
 |---|---|---|
 | `MONGO_URI` | `mongodb://localhost:27017/ecg_auth_db` | MongoDB 连接串 |
 | `ADMIN_USERNAME` | `admin` | 管理后台账号 |
-| `ADMIN_PASSWORD` | `admin123` | 管理后台口令 —— **部署前必须修改** |
+| `ADMIN_PASSWORD` | `admin123` | 管理后台口令 —— **部署前必须修改**。未设置且监听地址不是回环地址时，服务会**拒绝启动**（见下方安全提示） |
 | `FLASK_SECRET_KEY` | 自动生成并持久化到 `web_auth/.flask_secret_key` | 会话签名密钥。未设置时自动生成一份本地密钥文件，使同一部署内的多个进程共享同一密钥 |
 | `FLASK_DEBUG` | `0` | 设为 `1` 开启调试模式。**会暴露可执行任意代码的调试器，仅限本机临时使用** |
 | `FLASK_HOST` | `127.0.0.1` | 监听地址。**默认只允许本机访问**；改为 `0.0.0.0` 需自行确认网络环境可信 |
@@ -150,6 +193,11 @@ venv\Scripts\python.exe -m pytest
 管理后台入口：`/manage/login`
 
 > ⚠️ **安全提示**：默认管理员口令仅用于本地开发。请通过环境变量覆盖后再部署。
+>
+> **这条约束由代码强制，不靠自觉**：应用工厂在组装的第一步校验「监听地址 + 管理员口令」
+> 组合，`FLASK_HOST` 指向非回环地址而 `ADMIN_PASSWORD` 仍为默认值时直接抛错拒绝启动，
+> 覆盖本地开发服务器与 `web_auth:create_app()` 两条入口。仅本机试用时保持
+> `FLASK_HOST=127.0.0.1` 即可，不受影响。
 >
 > **调试模式默认关闭**：`app.run()` 只是本地开发入口。调试模式一旦开启，Werkzeug 会暴露
 > 可执行任意代码的交互式调试器，并显示完整堆栈与配置（含数据库连接串）。
@@ -286,7 +334,7 @@ DEMO_MODE=1 venv\Scripts\python.exe web_auth\app.py
 | 贡献者 | 主要贡献 |
 |---|---|
 | [@Zzthird](https://github.com/Zzthird) | **项目原始原型**：设备接入（BLE 蓝牙 / 串口）、信号采集与预处理流水线、BiLSTM + Attention 模型训练与认证比对逻辑、MongoDB 存储层 |
-| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（190 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
+| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（211 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
 
 > 原始原型完成于 2025 年 8 月；前端重构、安全加固与工程整理完成于 2026 年 9 月。
 > 仓库保留了完整的开发提交历史，贡献者名单由提交作者自动统计。

@@ -1,0 +1,173 @@
+name: CI
+
+# 三件事需要由流水线而不是口头约定来保证：
+#   1. 回归集、静态检查、脱敏扫描在每次提交后都真的跑过；
+#   2. `web_auth/static/dist/` 里的产物与当前前端源码一致（改了源码没 build 会失败）；
+#   3. `.gitignore` 没有静默吞掉本该入库的文件。
+#
+# 本机没有 Actions 运行器，因此这些步骤都是本地已逐条复跑过的等价命令。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  PYTHONUNBUFFERED: '1'
+  PYTHONIOENCODING: utf-8
+  # 无显示环境下 matplotlib 必须用非交互后端，否则导入即失败
+  MPLBACKEND: Agg
+
+jobs:
+  backend:
+    name: 后端测试与静态检查
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      # PyPI 上的 Linux 版 torch 会连带下载整套 CUDA 运行库（数 GB）。
+      # 本项目只用 CPU，先按 CPU 索引装一次；该索引若缺对应版本则回落到 PyPI。
+      - name: 预装 CPU 版 PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu \
+            || pip install torch==2.8.0
+
+      - name: 安装依赖
+        run: |
+          pip install -r requirements-dev.txt
+          pip install pyflakes==3.4.0
+
+      - name: 单元与契约测试
+        run: python -m pytest
+
+      - name: 静态检查
+        run: python -m pyflakes web_auth ecgppg_system model_example scripts tests
+
+      # 扫描器先做阳性自检：若正则写错，自检样本会漏报，此时 tree 通过也不可信。
+      - name: 脱敏扫描器自检
+        run: python scripts/verify/desensitize_scan.py selftest
+
+      - name: 已跟踪文件脱敏扫描
+        run: python scripts/verify/desensitize_scan.py tree
+
+      - name: 忽略规则护栏
+        run: |
+          stray="$(git ls-files -c -i --exclude-standard)"
+          if [ -n "$stray" ]; then
+            echo "::error::以下文件已跟踪却仍被 .gitignore 命中，通常是规则缺少根目录锚定："
+            echo "$stray"
+            exit 1
+          fi
+          echo "未发现被误伤的文件"
+
+  frontend:
+    name: 前端类型检查与产物一致性
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: web_auth/frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web_auth/frontend/package-lock.json
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 类型检查
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: 重新构建
+        run: npm run build
+
+      # 后端直接托管 static/dist，产物必须入库。若构建结果与已提交产物不同，
+      # 说明改了前端源码却忘了提交构建输出（或产物被手工改过）。
+      - name: 产物与源码一致
+        working-directory: .
+        run: |
+          if ! git diff --quiet -- web_auth/static/dist; then
+            echo "::error::构建产物与仓库内容不一致，请在本地执行 npm run build 并提交 web_auth/static/dist/"
+            git diff --stat -- web_auth/static/dist
+            exit 1
+          fi
+          echo "构建产物与源码一致"
+
+  e2e:
+    name: 端到端验证
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: backend
+
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.runCommand({ping: 1})'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 12
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.9'
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dev.txt
+
+      - name: 预装 CPU 版 PyTorch
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu \
+            || pip install torch==2.8.0
+
+      - name: 安装依赖
+        run: pip install -r requirements-dev.txt
+
+      # 这些脚本各自在独立临时库上跑，结束时 drop；日志与结构化结果写到临时目录，
+      # 不落在仓库里。串行执行是因为它们都要占用 5000 端口。
+      - name: 端到端验证
+        run: python scripts/verify/run_all.py
+
+      - name: 失败时输出日志
+        if: failure()
+        run: |
+          for f in "${TMPDIR:-/tmp}"/cardiocrypt-verify/*.log; do
+            [ -f "$f" ] || continue
+            echo "===== $f ====="
+            tail -n 60 "$f"
+          done
