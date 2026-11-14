@@ -120,6 +120,7 @@ venv\Scripts\python.exe -m pytest
 | `tests/test_spa.py` | SPA 适配层的会话投影、令牌下发、未知路径仍返回真 404 |
 | `tests/test_demo_mode.py` | 演示模式：默认关闭时采集不到数据必须判失败，开启后结果带 `demo` 标记且判定规则不变 |
 | `tests/test_dashboard.py` | 仪表盘真实统计与示意字段标注、字段名与消费者一致 |
+| `tests/test_auth_history.py` | 认证历史的写入闭环、终态归并、演示标记、轮询不重复、写库失败不影响结论 |
 | `tests/test_model_io.py` | 模型存档读写、按存档重建结构、模板窗口与 metadata 契约 |
 | `tests/test_refactor_contracts.py` | 分层重构后各模块的行为契约（默认配置隔离、状态回收、删除流程一致性等） |
 | `tests/test_signal_morphology.py` | 形态参数派生稳定性、默认波形逐点等价、跨主体相异 |
@@ -285,7 +286,7 @@ DEMO_MODE=1 venv\Scripts\python.exe web_auth\app.py
 | 贡献者 | 主要贡献 |
 |---|---|
 | [@Zzthird](https://github.com/Zzthird) | **项目原始原型**：设备接入（BLE 蓝牙 / 串口）、信号采集与预处理流水线、BiLSTM + Attention 模型训练与认证比对逻辑、MongoDB 存储层 |
-| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（180 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
+| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（190 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
 
 > 原始原型完成于 2025 年 8 月；前端重构、安全加固与工程整理完成于 2026 年 9 月。
 > 仓库保留了完整的开发提交历史，贡献者名单由提交作者自动统计。
