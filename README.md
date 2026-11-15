@@ -129,6 +129,14 @@ venv\Scripts\python.exe -m pytest
 | `tests/test_deployment_guard.py` | 部署形态护栏：默认口令 + 对外监听必须拒绝启动，回环地址与显式口令下不受影响 |
 | `tests/test_healthz.py` | `/healthz` 的契约：免登录可访问、依赖异常转 503、响应不泄漏部署细节、只读、不缓存 |
 
+前端另有基于 Vitest 的单元测试，覆盖请求层 `src/lib/api.ts` 的行为契约 ——
+4xx/5xx 带 JSON 体不能当作成功、读超时、CSRF 令牌获取与 403 重试、数组表单编码：
+
+```bash
+cd web_auth/frontend
+npm test
+```
+
 ### 5. 端到端验证
 
 单元测试覆盖不到"进程真的起得来、页面真的走得通"，这部分由 `scripts/verify/`
@@ -161,7 +169,7 @@ python scripts/verify/run_all.py --only demo_mode_e2e.py
 | 作业 | 内容 |
 |---|---|
 | 后端 | `pytest`（MongoDB service）、`pyflakes`、脱敏扫描器自检与全树扫描、忽略规则护栏 |
-| 前端 | `npm ci`、`tsc --noEmit`、`vite build`，并校验构建产物与仓库内容一致 |
+| 前端 | `npm ci`、`tsc --noEmit`、`vitest run`、`vite build`，并校验构建产物与仓库内容一致 |
 | 端到端 | `scripts/verify/run_all.py`，失败时回显各脚本日志 |
 
 运行器镜像显式钉在 `ubuntu-24.04`，不用 `ubuntu-latest`：后者已迁到 Ubuntu 26.04，
@@ -172,9 +180,10 @@ python scripts/verify/run_all.py --only demo_mode_e2e.py
 
 - **产物一致性**：`web_auth/static/dist/` 必须入库，且必须与 `web_auth/frontend/src`
   的当前内容同源。改了前端源码忘记 build，CI 会直接失败并提示重建。
-- **忽略规则护栏**：`.gitignore` 里的目录规则若缺少根目录锚定，会静默吞掉本该入库
-  的文件（如 `models/` 命中 `ecgppg_system/models/`）。护栏在"已跟踪却仍被忽略命中"
-  时失败。
+- **忽略规则护栏**：`.gitignore` 的误伤是双向的，两个方向都由流水线拦住 ——
+  一是「已跟踪却仍被忽略命中」（通常是目录规则缺少根目录锚定，如 `models/` 命中
+  `ecgppg_system/models/`）；二是「源码 / 测试文件被忽略规则吞掉」（`*.test.*`
+  就曾把前端的 `*.test.ts` 一并吃掉）。两者都不报错，文件只是"在磁盘上但 git 看不见"。
 
 ### 7. 健康检查
 
