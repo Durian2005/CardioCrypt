@@ -1,25 +1,94 @@
+<div align="center">
+
 # CardioCrypt
 
-基于 **ECG（心电）/ PPG（光电容积脉搏波）** 生物特征的无密码身份认证系统。通过蓝牙手环或串口设备采集生理信号，提取时序特征后由 **BiLSTM + Attention** 模型推理：模型输出一个「与注册样本的重构相似度」分数，与阈值比较后给出判定。分数含义与窗口口径见 [判定口径](#判定口径)。
+**基于心电（ECG）/ 光电容积脉搏波（PPG）的无密码身份认证系统**
+
+<a href="https://github.com/Durian2005/CardioCrypt/actions/workflows/ci.yml"><img src="https://github.com/Durian2005/CardioCrypt/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI 状态"></a>
+<img src="https://img.shields.io/github/v/tag/Durian2005/CardioCrypt?label=version&color=4C8EDA&logo=git&logoColor=white" alt="版本">
+<img src="https://img.shields.io/badge/Python-3.9-3776AB?logo=python&logoColor=white" alt="Python 3.9">
+<img src="https://img.shields.io/badge/Flask-3.1-000000?logo=flask&logoColor=white" alt="Flask 3.1">
+<img src="https://img.shields.io/badge/PyTorch-2.8-EE4C2C?logo=pytorch&logoColor=white" alt="PyTorch 2.8">
+<img src="https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=000000" alt="React 19">
+<img src="https://img.shields.io/badge/Node-22-5FA04E?logo=nodedotjs&logoColor=white" alt="Node 22">
+<img src="https://img.shields.io/badge/MongoDB-7-47A248?logo=mongodb&logoColor=white" alt="MongoDB 7">
+
+</div>
+
+通过蓝牙手环或串口设备采集生理信号，提取时序特征后由 **BiLSTM + Attention** 模型推理：模型输出一个「与注册样本的重构相似度」分数，与阈值比较后给出判定。分数含义与窗口口径见 [判定口径](#判定口径)。
 
 > 本项目为课程实践项目，用于研究与演示生物特征认证的完整链路。
+
+**[功能概览](#功能概览)** · **[系统架构](#系统架构)** · **[技术栈](#技术栈)** · **[目录结构](#目录结构)** · **[快速开始](#快速开始)** · **[配置项](#配置项环境变量)** · **[判定口径](#判定口径)** · **[适用边界](#适用边界)** · **[安全设计](#安全设计)** · **[贡献者](#贡献者)**
+
+---
 
 ## 功能概览
 
 | 模块 | 说明 |
 |---|---|
-| 身份注册 | 采集多次信号样本，训练专属个人模型 |
-| 身份认证 | 实时采集并比对，输出判定结果与相似度分数（逐窗口评分后取均值） |
-| 数据采集 | 支持 BLE 蓝牙 / 串口 两类设备，带设备扫描与连接向导 |
-| 用户仪表盘 | 心率、情绪、告警等级、设备状态与历史趋势 |
-| 管理后台 | 注册用户管理、运行时参数（模型 / 验证 / 设备 / 训练）动态配置 |
+| 🧬 身份注册 | 采集多次信号样本，训练专属个人模型 |
+| 🔐 身份认证 | 实时采集并比对，输出判定结果与相似度分数（逐窗口评分后取均值） |
+| 📡 数据采集 | 支持 BLE 蓝牙 / 串口 两类设备，带设备扫描与连接向导 |
+| 📊 用户仪表盘 | 心率、情绪、告警等级、设备状态与历史趋势 |
+| ⚙️ 管理后台 | 注册用户管理、运行时参数（模型 / 验证 / 设备 / 训练）动态配置 |
+
+## 系统架构
+
+请求从设备进入、经采集与特征组装、交给模型推理、再由阈值判定落入存储，最后回到前端。
+算法层是唯一**可以整体缺席**的一层：导入失败时 Web 服务照常启动，`/healthz` 会把这一项标红，
+而不是让整个进程起不来。
+
+```mermaid
+flowchart TB
+    DEV["BLE 手环 / 串口设备"]
+
+    subgraph FE["前端 · React 19 SPA"]
+        UI["页面 / 组件"]
+        API["lib/api.ts · 请求层 + CSRF"]
+    end
+
+    subgraph WEB["Web 层 · Flask 应用工厂"]
+        SPA["spa_adapter · GET 转 SPA / POST 走业务"]
+        BP["blueprints · auth / device / dashboard / admin"]
+        HK["healthcheck · /healthz"]
+    end
+
+    subgraph SVC["服务层 · 无状态函数"]
+        COL["collection · 设备采集"]
+        SIG["signals · 特征组装"]
+        STA["stats · 真实统计"]
+    end
+
+    subgraph ALG["算法层 · 导入失败时降级，服务仍可启动"]
+        MDL["BiLSTM + Attention · 重构相似度"]
+        LIB["ecgppg_system · 信号处理 / 设备 / 可视化"]
+    end
+
+    DB[("MongoDB")]
+
+    UI --> API --> SPA --> BP
+    DEV --> COL
+    BP --> COL --> SIG --> MDL --> DEC{"阈值比较"}
+    DEC --> DB
+    BP --> STA --> DB
+    BP --> HK --> DB
+    MDL -. 依赖 .-> LIB
+```
+
+窗口长度这个口径贯穿采集、注册与认证三处（详见 [判定口径](#判定口径)），
+因此在图里 `signals` 同时被采集与认证两条路径共用，而不是各自算一套。
 
 ## 技术栈
 
-**前端**：React 19 · Vite 6 · TypeScript · Tailwind CSS v4 · Framer Motion · React Router 7
-**后端**：Python 3.9 · Flask · PyMongo
-**算法**：PyTorch (BiLSTM + Attention) · NumPy · SciPy · PyWavelets · fastdtw · scikit-learn
-**存储**：MongoDB
+| 层 | 技术选型 |
+|---|---|
+| 前端 | React 19 · Vite 6 · TypeScript · Tailwind CSS v4 · Framer Motion · React Router 7 |
+| 后端 | Python 3.9 · Flask 3.1 · PyMongo 4.14 |
+| 算法 | PyTorch 2.8（BiLSTM + Attention）· NumPy 2.0 · SciPy 1.13 · PyWavelets · fastdtw · scikit-learn |
+| 存储 | MongoDB 7 |
+
+精确版本以 `requirements.txt` 与 `web_auth/frontend/package.json` 锁定为准，上表只标主版本。
 
 ## 目录结构
 
