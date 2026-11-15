@@ -218,12 +218,19 @@ def section_ok_instance():
 
     check('响应耗时在合理范围（<5 秒）', elapsed < 5.0, '{:.2f}s'.format(elapsed))
 
-    # 对照项：只有真路由才返回 JSON，未知路径会被 SPA 兜底成 HTML ——
-    # 这条同时说明上面"未接管的 JSON"不是巧合
-    unknown_status, unknown_headers, _, _ = get('/healthz-not-a-route', PORT_OK)
-    check('对照：未知路径由 SPA 兜底为 HTML',
-          'text/html' in unknown_headers.get('Content-Type', ''),
-          '{} {}'.format(unknown_status, unknown_headers.get('Content-Type')))
+    # 对照项一：普通未知路径会被 SPA 兜底成 HTML 200。这证明适配层确实装着，
+    # 因此上面拿到的 JSON 是真路由命中，而不是"适配层没生效"的巧合。
+    page_status, page_headers, _, _ = get('/no-such-page', PORT_OK)
+    check('对照：普通未知路径由 SPA 兜底为 HTML 200',
+          page_status == 200 and 'text/html' in page_headers.get('Content-Type', ''),
+          '{} {}'.format(page_status, page_headers.get('Content-Type')))
+
+    # 对照项二：拼错的健康检查路径必须得到真 404。探针只看状态码，
+    # 若被兜底成 200，写错端点地址的部署会一直显示"健康"。
+    for path in ('/healthz/', '/healthz-not-a-route'):
+        typo_status, typo_headers, _, _ = get(path, PORT_OK)
+        check('拼错路径 {} 得到真 404'.format(path), typo_status == 404,
+              '{} {}'.format(typo_status, typo_headers.get('Content-Type')))
 
     stop(proc)
 
