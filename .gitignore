@@ -71,10 +71,13 @@ desktop.ini
 /models/*.onnx
 /models/checkpoints/
 
-# 测试文件
+# 测试数据（不是测试源码）
+#
+# 这里原本还写了 `*.test` 与 `*.test.*`，本意是挡本地的测试数据文件。
+# 但 `*.test.ts` 是前端单元测试的标准命名，规则会把源码级测试一起吞掉，
+# 而且**不报错**：文件就在磁盘上，git 只是当它不存在。已删除该规则，
+# 测试数据统一放在下面的 test_samples/ 里。
 test_samples/sample_data/
-*.test
-*.test.*
 
 # 临时文件
 *.tmp
