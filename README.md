@@ -372,6 +372,7 @@ DEMO_MODE=1 venv\Scripts\python.exe web_auth\app.py
 
 ## 说明
 
+- **版本与变更记录**：当前版本 `2.0.0`，按时间顺序的变更见 [CHANGELOG.md](CHANGELOG.md)。
 - **模型权重不入库**：`*.pth` 已加入 `.gitignore`。个人模型在用户完成注册采集后由训练流程生成，可用仓库内训练脚本复现。
 - **前端适配层**：`spa_adapter.py` 采用「包装既有视图函数」的方式，使 GET 请求返回 SPA、POST 请求保持原有表单语义，后端业务逻辑无需改动。设置 `FRONTEND_MODE=classic` 可随时切回 Jinja2 页面。
 - **一份已废弃的认证实现**：`ecgppg_system/utils/authentication.py` 是早期原型的认证实现，已被 `model_example/authentication.py` 取代，当前没有任何调用方。已在模块头标注废弃并保留实现 —— 保留是为了不抹去原始贡献者的代码与提交历史；该模块存在若干已知限制，详见其 docstring。
