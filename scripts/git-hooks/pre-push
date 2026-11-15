@@ -1,0 +1,92 @@
+#!/bin/sh
+# pre-push：对「即将推送的提交区间」做脱敏扫描。
+#
+# 此前这一步靠人工纪律 —— 每次 push 前手动跑一遍扫描器，漏一次就漏一次。
+# 实际就漏过一次：提交后只扫了工作区，忘了对提交后的区间再扫一遍，提交说明
+# 那一块当时没被覆盖。放进钩子后它随代码走，换台机器只需执行一次安装：
+#
+#   git config core.hooksPath scripts/git-hooks
+#
+# 设计原则：只在真的扫出严格项时阻断推送。解释器缺失、扫描器报错、区间无法
+# 确定这类环境问题一律放行并打印警告 —— 钩子把干净的推送流程卡死，比漏扫
+# 一次更糟，而且会让人习惯性地加 --no-verify 绕过它，最后连真问题也一起绕过。
+
+set -u
+
+zero=0000000000000000000000000000000000000000
+
+root=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+cd "$root" || exit 0
+
+scanner="scripts/verify/desensitize_scan.py"
+if [ ! -f "$scanner" ]; then
+    echo "[脱敏] 未找到 $scanner，跳过扫描" >&2
+    exit 0
+fi
+
+# 优先用仓库自带的虚拟环境，保证与 CI / 手动验证用的是同一套依赖。
+py=""
+for c in "$root/venv/Scripts/python.exe" "$root/venv/bin/python" "$root/.venv/bin/python"; do
+    if [ -x "$c" ]; then py="$c"; break; fi
+done
+if [ -z "$py" ]; then
+    for c in python3 python; do
+        if command -v "$c" >/dev/null 2>&1; then py="$c"; break; fi
+    done
+fi
+if [ -z "$py" ]; then
+    echo "[脱敏] 未找到 Python 解释器，跳过扫描" >&2
+    exit 0
+fi
+
+failed=0
+checked=0
+
+# git 通过 stdin 传入每个待更新的 ref：本地 ref、本地 sha、远端 ref、远端 sha
+while read -r local_ref local_sha remote_ref remote_sha; do
+    [ -n "${local_ref:-}" ] || continue
+
+    # 删除分支：没有内容要扫
+    if [ "$local_sha" = "$zero" ]; then
+        continue
+    fi
+
+    # 新分支：远端没有基准，内容由 CI 的全树扫描覆盖
+    if [ "$remote_sha" = "$zero" ]; then
+        echo "[脱敏] ${local_ref} 在新分支上，跳过区间扫描（内容由 CI 全树扫描覆盖）" >&2
+        continue
+    fi
+
+    # 远端基准不在本地（常见于换了机器、没先 fetch）：放行，让 push 自己报错
+    if ! git cat-file -e "${remote_sha}^{commit}" 2>/dev/null; then
+        echo "[脱敏] 缺少远端基准 $(printf %s "$remote_sha" | cut -c1-7)，先 git fetch 再推送" >&2
+        continue
+    fi
+
+    checked=$((checked + 1))
+    echo "[脱敏] 扫描 $(printf %s "$remote_sha" | cut -c1-7)..$(printf %s "$local_sha" | cut -c1-7)" >&2
+
+    report=$("$py" "$scanner" commits "$remote_sha" "$local_sha" 2>&1)
+    rc=$?
+
+    if [ "$rc" -ne 0 ]; then
+        # 只给前 40 行：钩子里刷屏会盖掉 git 自己的输出
+        printf '%s\n' "$report" | sed -n '1,40p' >&2
+        failed=1
+    else
+        printf '%s\n' "$report" | grep -E '^(结论|严格项)' | sed 's/^/    /' >&2
+    fi
+done
+
+if [ "$failed" -ne 0 ]; then
+    echo "" >&2
+    echo "[脱敏] 发现问题，已阻止推送。" >&2
+    echo "[脱敏] 修掉后重新提交；若确认是误判，可临时 git push --no-verify 绕过，并在说明里写明原因。" >&2
+    exit 1
+fi
+
+if [ "$checked" -eq 0 ]; then
+    echo "[脱敏] 本次没有可扫描的区间，跳过" >&2
+fi
+
+exit 0

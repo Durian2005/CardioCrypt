@@ -1,0 +1,12 @@
+# 行尾策略
+#
+# 仓库其余文件交给 Git 的默认处理（Windows 上 core.autocrlf=true 时索引存 LF、
+# 工作区存 CRLF），但下面这类文件必须钉死 LF。
+#
+# 钩子脚本由 sh 解释执行。若检出时被转成 CRLF，首行的 `#!/bin/sh` 会变成
+# `/bin/sh^M`，系统去找一个名字里带回车符的解释器，报 "bad interpreter" 而拒绝
+# 执行 —— 而且只在真正 push 的那一刻才暴露，平时的读写看起来完全正常。
+scripts/git-hooks/* text eol=lf
+
+# 同理：shell 脚本一律 LF，它们在 Linux 运行器上执行，CRLF 会让首行失效。
+*.sh text eol=lf

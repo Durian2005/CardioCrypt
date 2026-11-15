@@ -168,7 +168,7 @@ python scripts/verify/run_all.py --only demo_mode_e2e.py
 
 | 作业 | 内容 |
 |---|---|
-| 后端 | `pytest`（MongoDB service）、`pyflakes`、脱敏扫描器自检与全树扫描、忽略规则护栏 |
+| 后端 | `pytest`（MongoDB service）、`pyflakes`、脱敏扫描器自检、全树扫描与推送区间扫描、忽略规则护栏 |
 | 前端 | `npm ci`、`tsc --noEmit`、`vitest run`、`vite build`，并校验构建产物与仓库内容一致 |
 | 端到端 | `scripts/verify/run_all.py`，失败时回显各脚本日志 |
 
@@ -184,6 +184,25 @@ python scripts/verify/run_all.py --only demo_mode_e2e.py
   一是「已跟踪却仍被忽略命中」（通常是目录规则缺少根目录锚定，如 `models/` 命中
   `ecgppg_system/models/`）；二是「源码 / 测试文件被忽略规则吞掉」（`*.test.*`
   就曾把前端的 `*.test.ts` 一并吃掉）。两者都不报错，文件只是"在磁盘上但 git 看不见"。
+
+#### 推送前检查（本地钩子）
+
+CI 跑在推送**之后**，发现问题时内容已经公开了。所以脱敏扫描还有一道前置闸：
+`scripts/git-hooks/pre-push` 会在 `git push` 真正发出前扫一遍即将推送的区间
+（包含提交说明），扫出严格项就直接拦下。钩子随代码入库，换台机器启用一次即可：
+
+```bash
+git config core.hooksPath scripts/git-hooks
+```
+
+它只在真的扫出问题时阻断推送。解释器找不到、远端基准不在本地这类环境问题一律放行
+并打印警告 —— 把干净的推送流程卡死，比漏扫一次更糟，而且会让人养成随手加
+`--no-verify` 的习惯，最后连真问题一起绕过。确认是误判时仍可 `git push --no-verify`，
+那就只剩 CI 一道检查。
+
+两道闸分工不同，缺一不可：本地钩子能**拦住**，但只在装了钩子的机器上生效；CI 拦不住
+（已经推上去了），但**对方无法绕过**。区间扫描还补了全树扫描看不到的一块 ——
+提交说明本身，以及内部文件有没有被混进提交。
 
 ### 7. 健康检查
 

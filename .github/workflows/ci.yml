@@ -42,7 +42,11 @@ jobs:
           --health-retries 12
 
     steps:
+      # 关闭浅克隆：下面的提交说明扫描要定位「这次推送的起点」，
+      # 浅克隆里只有最新一条提交，找不到那个基准。
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
@@ -77,6 +81,26 @@ jobs:
 
       - name: 已跟踪文件脱敏扫描
         run: python scripts/verify/desensitize_scan.py tree
+
+      # tree 扫描看的是文件内容，这一步补它看不到的两块：提交说明本身，
+      # 以及「内部文件有没有被混进提交」。区间起点由事件上下文给出 ——
+      # push 事件取 before，PR 事件取 base；两者都取不到时跳过（内容已由
+      # tree 覆盖），而不是让流程失败。
+      - name: 提交说明脱敏扫描
+        run: |
+          base="${{ github.event.before }}"
+          if [ -z "$base" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+          fi
+          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "无法确定推送区间起点（新分支或首次推送），跳过；内容已由 tree 扫描覆盖"
+            exit 0
+          fi
+          if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+            echo "区间起点 ${base} 不在本地历史中，跳过区间扫描"
+            exit 0
+          fi
+          python scripts/verify/desensitize_scan.py commits "$base" HEAD
 
       - name: 忽略规则护栏
         run: |
