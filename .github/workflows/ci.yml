@@ -6,6 +6,11 @@ name: CI
 #   3. `.gitignore` 没有静默吞掉本该入库的文件。
 #
 # 本机没有 Actions 运行器，因此这些步骤都是本地已逐条复跑过的等价命令。
+#
+# 运行器镜像显式钉在 ubuntu-24.04，不用 ubuntu-latest：后者已在 2026-10 迁到
+# Ubuntu 26.04，而 actions/python-versions 并未为 26.04 提供 CPython 3.9 的预编译包
+# （3.9 只到 24.04），会让 setup-python 直接失败。等本项目不再需要 3.9 时再解除钉定。
+# action 也用当前主版本（v7），避免继续停留在已弃用 Node 运行时的版本上。
 
 on:
   push:
@@ -22,7 +27,7 @@ env:
 jobs:
   backend:
     name: 后端测试与静态检查
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
 
     services:
@@ -37,9 +42,9 @@ jobs:
           --health-retries 12
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.9'
           cache: pip
@@ -85,16 +90,16 @@ jobs:
 
   frontend:
     name: 前端类型检查与产物一致性
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     defaults:
       run:
         working-directory: web_auth/frontend
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: npm
@@ -123,7 +128,7 @@ jobs:
 
   e2e:
     name: 端到端验证
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     needs: backend
 
@@ -139,9 +144,9 @@ jobs:
           --health-retries 12
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.9'
           cache: pip

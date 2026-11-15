@@ -160,6 +160,10 @@ python scripts/verify/run_all.py --only demo_mode_e2e.py
 | 前端 | `npm ci`、`tsc --noEmit`、`vite build`，并校验构建产物与仓库内容一致 |
 | 端到端 | `scripts/verify/run_all.py`，失败时回显各脚本日志 |
 
+运行器镜像显式钉在 `ubuntu-24.04`，不用 `ubuntu-latest`：后者已迁到 Ubuntu 26.04，
+而 `actions/python-versions` 没有为 26.04 提供 CPython 3.9 的预编译包（3.9 只到 24.04），
+`setup-python` 会在拉解释器这一步直接失败。等本项目不再需要 3.9 时再解除钉定。
+
 其中两条是本项目踩过的坑，现在由流水线而不是口头约定兜住：
 
 - **产物一致性**：`web_auth/static/dist/` 必须入库，且必须与 `web_auth/frontend/src`
