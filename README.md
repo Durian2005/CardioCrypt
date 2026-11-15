@@ -38,11 +38,13 @@
 │   │   ├── auth.py            #   首页 / 注册 / 登录登出
 │   │   ├── device.py          #   设备扫描连接 / 数据采集 / 认证执行
 │   │   ├── dashboard.py       #   用户仪表盘与状态轮询
-│   │   └── admin.py           #   管理后台
+│   │   ├── admin.py           #   管理后台
+│   │   └── healthcheck.py     #   /healthz 健康检查（供探针 / 负载均衡）
 │   ├── services/              # 无状态业务函数
 │   │   ├── signals.py         #   信号指标提取与特征组装
 │   │   ├── collection.py      #   BLE / 串口数据采集（验证与注册共用）
 │   │   ├── health.py          #   心率 / 情绪 / 告警等级计算
+│   │   ├── healthcheck.py     #   服务自身健康检查（数据库 / 算法层）
 │   │   └── stats.py           #   真实统计聚合（认证次数 / 运行时长等）
 │   ├── spa_adapter.py         # React SPA 适配层（GET→SPA，POST→原逻辑）
 │   ├── frontend/              # React 前端源码
@@ -59,7 +61,7 @@
 └── requirements.txt
 ```
 
-后端已从单文件拆分为「工厂 + 分层模块 + 4 个蓝图」：原 `app.py` 由 3000 余行收缩到
+后端已从单文件拆分为「工厂 + 分层模块 + 5 个蓝图」：原 `app.py` 由 3000 余行收缩到
 不足 60 行的入口壳，路由按职责分散到 `blueprints/`，配置、扩展实例、进程内状态与
 算法层适配各自独立成模块。改配置或加路由不必再在一个巨文件里翻找。
 
@@ -125,6 +127,7 @@ venv\Scripts\python.exe -m pytest
 | `tests/test_refactor_contracts.py` | 分层重构后各模块的行为契约（默认配置隔离、状态回收、删除流程一致性等） |
 | `tests/test_signal_morphology.py` | 形态参数派生稳定性、默认波形逐点等价、跨主体相异 |
 | `tests/test_deployment_guard.py` | 部署形态护栏：默认口令 + 对外监听必须拒绝启动，回环地址与显式口令下不受影响 |
+| `tests/test_healthz.py` | `/healthz` 的契约：免登录可访问、依赖异常转 503、响应不泄漏部署细节、只读、不缓存 |
 
 ### 5. 端到端验证
 
@@ -140,6 +143,7 @@ python scripts/verify/run_all.py --only demo_mode_e2e.py
 
 | 脚本 | 覆盖范围 |
 |---|---|
+| `healthz_e2e.py` | 健康检查全链路：正常实例 200 / JSON 未被 SPA 兜底、降级实例 503 且快速失败、响应体不泄漏 |
 | `p2_perf_equivalence.py` | 算法层收尾优化的等价性对照：分位数、比较结果复用、相关系数矩阵、绘图路径 |
 | `demo_mode_e2e.py` | 演示模式全链路：默认关闭时判失败、开启后带标记且判定规则不变 |
 | `batch2_e2e.py` | 仪表盘真实/示意字段标注、请求层超时与 `res.ok` 判定、字段名一致性 |
@@ -171,6 +175,45 @@ python scripts/verify/run_all.py --only demo_mode_e2e.py
 - **忽略规则护栏**：`.gitignore` 里的目录规则若缺少根目录锚定，会静默吞掉本该入库
   的文件（如 `models/` 命中 `ecgppg_system/models/`）。护栏在"已跟踪却仍被忽略命中"
   时失败。
+
+### 7. 健康检查
+
+部署后给探针、负载均衡与发布脚本用的端点，不在 `/api/` 下，也不需要登录：
+
+```bash
+curl -s http://127.0.0.1:5000/healthz
+```
+
+```json
+{
+  "status": "ok",
+  "uptime_seconds": 1234,
+  "demo_mode": false,
+  "frontend_mode": "spa",
+  "checks": {
+    "database": {"ok": true, "latency_ms": 1.2},
+    "algorithm_layer": {"ok": true}
+  }
+}
+```
+
+| 状态码 | 含义 |
+|---|---|
+| 200 | 依赖都正常（`status: ok`） |
+| 503 | 有依赖异常（`status: degraded`），`checks` 里指明是哪一项、失败原因是什么 |
+
+四项刻意取舍：
+
+- **没有鉴权，因此响应体必须干净**：不含连接串、库名、文件路径、模型名；
+  出错时只回异常类型名 —— PyMongo 的异常文本带 `host:port`，属于部署细节。
+- **只读**：不写库、不加载模型、不建会话，探针可以放心高频调用。
+- **`Cache-Control: no-store`**：避免中间层把"已经挂了"缓存成"还是好的"。
+- **最坏耗时等于 `MONGO_SERVER_SELECTION_TIMEOUT_MS`**（默认 5 秒）：探针自身的
+  超时要大于这个值，否则数据库故障会被误读成"探针超时"而不是"依赖不可用"。
+
+`algorithm_layer` 之所以也是检查项：算法模块导入失败时服务仍会启动（这是刻意的
+降级设计，见 `web_auth/core.py`），但注册与认证必然失败。少了这一项，就会出现
+"进程活着、监控全绿、业务全红"。
 
 ## 配置项（环境变量）
 
@@ -318,6 +361,7 @@ DEMO_MODE=1 venv\Scripts\python.exe web_auth\app.py
 | 上传体积上限 | `MAX_CONTENT_LENGTH` 默认 16MB，避免超长请求体拖垮进程 | 超限直接返回 413，长信号需自行分段 |
 | 错误信息不泄漏路径 | 管理接口只返回模型文件名，不下发本机绝对路径 | 该字段仍被两个管理页渲染，改名会连带影响前端与模板 |
 | 密钥可持久化 | 未显式配置时自动生成并写入 `web_auth/.flask_secret_key`，使同机多进程共享密钥 | 生产环境仍应显式配置 `FLASK_SECRET_KEY`；密钥文件在文件系统不可写时退回进程内随机值并打印告警 |
+| 健康检查免鉴权 | 探针拿不到会话，`/healthz` 不做登录校验；作为交换，响应体不含连接串、库名、路径与模型名，失败只回异常类型名 | 端点本身可被任意来源访问，等于对外公开「服务是否可用」这一事实；需要隐藏可用性时应在反向代理层限制来源 |
 
 > **部署形态约束**：设备连接状态、验证结果与模型缓存都是**进程内状态**，
 > 因此必须**单进程多线程**运行（`-w 1 --threads N`）。多进程会让请求落到互不相见的副本上 ——
@@ -338,7 +382,7 @@ DEMO_MODE=1 venv\Scripts\python.exe web_auth\app.py
 | 贡献者 | 主要贡献 |
 |---|---|
 | [@Zzthird](https://github.com/Zzthird) | **项目原始原型**：设备接入（BLE 蓝牙 / 串口）、信号采集与预处理流水线、BiLSTM + Attention 模型训练与认证比对逻辑、MongoDB 存储层 |
-| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（211 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
+| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（227 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
 
 > 原始原型完成于 2025 年 8 月；前端重构、安全加固与工程整理完成于 2026 年 9 月。
 > 仓库保留了完整的开发提交历史，贡献者名单由提交作者自动统计。

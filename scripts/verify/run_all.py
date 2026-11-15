@@ -23,6 +23,7 @@ from _common import PYTHON, RESULTS_DIR, ROOT
 HERE = Path(__file__).resolve().parent
 
 STEPS = [
+    ('健康检查端点端到端', 'healthz_e2e.py', False),
     ('算法层等价性对照', 'p2_perf_equivalence.py', True),
     ('演示模式端到端', 'demo_mode_e2e.py', False),
     ('仪表盘与请求层端到端', 'batch2_e2e.py', False),
