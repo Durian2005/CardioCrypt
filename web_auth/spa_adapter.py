@@ -203,7 +203,9 @@ def register_spa(app, mongo, admin_required):
     # 未知路径：交给 SPA 渲染（由其内部 * 路由展示 404 页面），
     # 但 /api、/static、/manage 这类有后端语义的前缀必须保留真正的 404，
     # 否则接口拼错时会拿到一坨 HTML，调试会非常痛苦。
-    _BACKEND_PREFIXES = ('/api/', '/static/', '/manage/')
+    # /healthz 同理且后果更严重：探针只看状态码，把 `/healthz/` 这类拼错
+    # 兜底成 HTML 200，等于让探针永远报绿。
+    _BACKEND_PREFIXES = ('/api/', '/static/', '/manage/', '/healthz')
 
     @app.errorhandler(404)
     def spa_not_found(error):

@@ -162,11 +162,14 @@ def _register_blueprints(app):
     from web_auth.blueprints.auth import bp as auth_bp
     from web_auth.blueprints.dashboard import bp as dashboard_bp
     from web_auth.blueprints.device import bp as device_bp
+    from web_auth.blueprints.healthcheck import bp as healthz_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(device_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
+    # 健康检查独立成一个蓝图：它不属于任何业务域，且必须与前端模式、登录态无关
+    app.register_blueprint(healthz_bp)
 
 
 def _register_spa(app):
