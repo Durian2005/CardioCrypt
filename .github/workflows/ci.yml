@@ -83,23 +83,45 @@ jobs:
         run: python scripts/verify/desensitize_scan.py tree
 
       # tree 扫描看的是文件内容，这一步补它看不到的两块：提交说明本身，
-      # 以及「内部文件有没有被混进提交」。区间起点由事件上下文给出 ——
-      # push 事件取 before，PR 事件取 base；两者都取不到时跳过（内容已由
-      # tree 覆盖），而不是让流程失败。
+      # 以及「内部文件有没有被混进提交」。
+      #
+      # 这里不接受「步骤成功就算数」：跳过的分支同样 exit 0，那样 CI 变绿并不
+      # 证明真的扫过，护栏会在无人察觉时失效。因此除了「首次推送」和「手动触发」
+      # 这两种确实不存在区间的场景，拿不到起点一律判失败 —— 绿就等于真的扫了。
       - name: 提交说明脱敏扫描
         run: |
-          base="${{ github.event.before }}"
+          event="${{ github.event_name }}"
+          case "$event" in
+            pull_request)
+              base="${{ github.event.pull_request.base.sha }}"
+              origin="PR 基准"
+              ;;
+            push)
+              base="${{ github.event.before }}"
+              origin="推送前远端"
+              ;;
+            *)
+              echo "事件 $event 没有推送区间，跳过区间扫描（内容已由 tree 扫描覆盖）"
+              exit 0
+              ;;
+          esac
+
           if [ -z "$base" ]; then
-            base="${{ github.event.pull_request.base.sha }}"
+            echo "::error::事件 $event 未提供区间起点，无法确认提交说明已扫描"
+            exit 1
           fi
-          if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
-            echo "无法确定推送区间起点（新分支或首次推送），跳过；内容已由 tree 扫描覆盖"
+
+          if [ "$base" = "0000000000000000000000000000000000000000" ]; then
+            echo "首次推送（$origin 为空），本就没有区间可扫；内容已由 tree 扫描覆盖"
             exit 0
           fi
+
           if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-            echo "区间起点 ${base} 不在本地历史中，跳过区间扫描"
-            exit 0
+            echo "::error::区间起点 ${base} 不在本地历史中。checkout 已设 fetch-depth: 0，出现此错说明配置被改过"
+            exit 1
           fi
+
+          echo "扫描区间 ${base}..HEAD（$origin）"
           python scripts/verify/desensitize_scan.py commits "$base" HEAD
 
       - name: 忽略规则护栏
