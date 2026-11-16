@@ -7,6 +7,7 @@
 """
 
 import os
+from datetime import datetime, time
 
 from flask import (
     Blueprint,
@@ -37,8 +38,18 @@ from web_auth.extensions import (
     clear_session_keep_csrf,
     mongo,
 )
+from web_auth.services import history
+from web_auth.services.stats import (
+    HISTORY_RESULT_FAILURE,
+    HISTORY_RESULT_SUCCESS,
+)
 
 bp = Blueprint('admin', __name__)
+
+# 认证历史的筛选参数上限。/api 之外的入口同样做长度封顶：
+# 一个 10 万字符的 `?username=` 会让日志与查询条件都变得难读。
+MAX_USERNAME_FILTER = 128
+DATE_FORMAT = '%Y-%m-%d'
 
 
 
@@ -87,7 +98,96 @@ def admin_dashboard():
     # 重新加载最新配置
     state.admin_config = load_app_config()
     
-    return render_template('admin_dashboard.html', users=users, config=state.admin_config)
+    return render_template(
+        'admin_dashboard.html',
+        users=users,
+        config=state.admin_config,
+        # 首页卡片只放最近若干条真实记录，完整查询在 /manage/auth_history
+        recent=history.recent_records(8),
+    )
+
+
+def _parse_day(value):
+    """
+    把 `YYYY-MM-DD` 解析成 `date`。
+
+    返回 `(day, error)`。格式不对时不抛异常 —— 用户在地址栏里手改参数是
+    常事，让整页 500 只会逼他清空地址栏重来，不如回一句"日期格式无效"。
+    """
+    if not value:
+        return None, None
+    try:
+        return datetime.strptime(value, DATE_FORMAT).date(), None
+    except (TypeError, ValueError):
+        return None, '日期格式无效（应为 YYYY-MM-DD）：{}'.format(value[:32])
+
+
+# 认证历史（只读）
+@bp.route('/manage/auth_history')
+@admin_required
+def auth_history():
+    """
+    认证历史的查看页：可按用户 / 结果 / 日期范围筛选，分页展示。
+
+    只读是刻意的：删除用户已有独立入口（`_purge_user` 会连带清掉该用户的
+    历史），这里再开删除按钮等于给同一份数据加第二个销毁路径。
+    """
+    args = request.args
+
+    username = (args.get('username') or '').strip()[:MAX_USERNAME_FILTER]
+    result = args.get('result') or ''
+    if result not in ('', HISTORY_RESULT_SUCCESS, HISTORY_RESULT_FAILURE):
+        # 非法取值按"不筛选"处理，而不是拼进查询里返回空表
+        result = ''
+
+    errors = []
+    start_day, error = _parse_day(args.get('start'))
+    if error:
+        errors.append(error)
+    end_day, error = _parse_day(args.get('end'))
+    if error:
+        errors.append(error)
+
+    if start_day and end_day and start_day > end_day:
+        # 顺序反了就整段忽略：交换会让人以为系统猜对了他的意图，
+        # 而按原样查必然一条都没有，两种都比说清楚更糟。
+        errors.append('开始日期晚于结束日期，日期范围未生效')
+        start_day = end_day = None
+
+    try:
+        page = int(args.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+
+    data = history.query_records(
+        username=username or None,
+        result=result or None,
+        # 闭区间取到当天最后一微秒：记录里的 timestamp 带微秒，
+        # 用 23:59:59 会把当天最后不足一秒的记录漏掉。
+        start=datetime.combine(start_day, time.min) if start_day else None,
+        end=datetime.combine(end_day, time.max) if end_day else None,
+        page=page,
+    )
+
+    # 分页链接要带回筛选条件，否则翻到第二页就丢了筛选。
+    # 空值不进链接，避免 /manage/auth_history?username=&result=&page=2 这种噪声。
+    filter_query = {
+        key: value
+        for key, value in (
+            ('username', username),
+            ('result', result),
+            ('start', args.get('start') or ''),
+            ('end', args.get('end') or ''),
+        )
+        if value
+    }
+
+    return render_template(
+        'admin_auth_history.html',
+        data=data,
+        errors=errors,
+        filters=filter_query,
+    )
 
 
 # 修改模型参数

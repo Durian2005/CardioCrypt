@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+{# 认证记录查看页：只读、可筛选、分页。
+   视觉上沿用后台的紫金配色与 Bootstrap 4，避免与 /manage/dashboard 判若两站。 #}
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>认证记录 · CardioCrypt 管理后台</title>
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/bootstrap/4.5.2/css/bootstrap.min.css">
+    <link href="https://fonts.loli.net/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.bootcdn.net/ajax/libs/font-awesome/5.15.4/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            padding-top: 3rem;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; }
+        .navbar {
+            background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%) !important;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        }
+        .navbar-brand { font-weight: 600; font-size: 1.25rem; }
+        .card {
+            border: none;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.95);
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 16px 16px 0 0 !important;
+            border: none;
+            padding: 1.5rem;
+        }
+        .card-header h5 { margin: 0; font-weight: 600; font-size: 1.25rem; }
+        .card-body { padding: 2rem; }
+        .form-control { border-radius: 8px; border: 2px solid #e9ecef; }
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 0.2rem rgba(102, 126, 234, 0.25);
+        }
+        .form-label { font-weight: 600; color: #495057; margin-bottom: 0.4rem; font-size: 0.9rem; }
+        .table thead th { border-top: none; border-bottom: 2px solid #e9ecef; color: #495057; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.03em; }
+        .table tbody td { vertical-align: middle; }
+        .table code { color: #6c757d; }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-md navbar-dark fixed-top">
+        <div class="container">
+            <a class="navbar-brand" href="{{ url_for('admin.admin_dashboard') }}">CardioCrypt 管理后台</a>
+            <ul class="navbar-nav ml-auto">
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('admin.admin_dashboard') }}">返回后台</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('admin.admin_logout') }}">退出认证</a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="card">
+            <div class="card-header">
+                <h5><i class="fas fa-history mr-2"></i>认证记录</h5>
+            </div>
+            <div class="card-body">
+                {% for message in errors %}
+                <div class="alert alert-warning">{{ message }}</div>
+                {% endfor %}
+
+                <form method="get" action="{{ url_for('admin.auth_history') }}" class="mb-4">
+                    <div class="form-row">
+                        <div class="form-group col-md-3">
+                            <label class="form-label" for="username">用户名</label>
+                            <input type="text" class="form-control" id="username" name="username"
+                                   value="{{ filters.username or '' }}" placeholder="留空为全部" maxlength="128">
+                        </div>
+                        <div class="form-group col-md-2">
+                            <label class="form-label" for="result">结果</label>
+                            <select class="form-control" id="result" name="result">
+                                <option value="" {% if not filters.result %}selected{% endif %}>全部</option>
+                                <option value="success" {% if filters.result == 'success' %}selected{% endif %}>通过</option>
+                                <option value="failure" {% if filters.result == 'failure' %}selected{% endif %}>未通过</option>
+                            </select>
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label class="form-label" for="start">起始日期</label>
+                            <input type="date" class="form-control" id="start" name="start" value="{{ filters.start or '' }}">
+                        </div>
+                        <div class="form-group col-md-3">
+                            <label class="form-label" for="end">结束日期</label>
+                            <input type="date" class="form-control" id="end" name="end" value="{{ filters.end or '' }}">
+                        </div>
+                        <div class="form-group col-md-1 d-flex align-items-end">
+                            <button type="submit" class="btn btn-primary btn-block">筛选</button>
+                        </div>
+                    </div>
+                    {% if filters %}
+                    <a href="{{ url_for('admin.auth_history') }}" class="btn btn-sm btn-outline-secondary">清除筛选</a>
+                    {% endif %}
+                </form>
+
+                {% if not data.ok %}
+                <div class="alert alert-danger mb-0">
+                    <strong>查询失败（{{ data.error }}）</strong> —— 这不代表"没有记录"，
+                    而是暂时读不到数据库。请确认 MongoDB 可达后重试，详细原因见服务日志。
+                </div>
+                {% else %}
+                <p class="text-muted small">
+                    共 <strong>{{ data.total }}</strong> 条记录{% if data.total %}，
+                    当前显示第 {{ data.first_index }}–{{ data.last_index }} 条{% endif %}
+                </p>
+
+                {% if data.records %}
+                <div class="table-responsive">
+                    <table class="table table-striped table-hover">
+                        <thead>
+                            <tr>
+                                <th>用户名</th>
+                                <th>时间</th>
+                                <th>结果</th>
+                                <th>耗时</th>
+                                <th>来源</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rec in data.records %}
+                            <tr>
+                                <td>{{ rec.get('username') or '—' }}</td>
+                                <td>{{ rec.get('timestamp').strftime('%Y-%m-%d %H:%M:%S') if rec.get('timestamp') else '—' }}</td>
+                                <td>
+                                    {% if rec.get('result') == 'success' %}
+                                    <span class="badge badge-success">通过</span>
+                                    {% else %}
+                                    <span class="badge badge-danger">未通过</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% set duration = rec.get('duration_ms') %}
+                                    {% if duration is not none %}{{ duration }} ms{% else %}<span class="text-muted">—</span>{% endif %}
+                                </td>
+                                <td>
+                                    {% if rec.get('demo') %}
+                                    <span class="badge badge-warning">演示数据</span>
+                                    {% else %}
+                                    <span class="text-muted">真实采集</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                {% if data.pages > 1 %}
+                {% set first_page = [1, data.page - 2] | max %}
+                {% set last_page = [data.pages, data.page + 2] | min %}
+                <nav aria-label="认证记录分页">
+                    <ul class="pagination justify-content-center mb-0">
+                        <li class="page-item {% if data.page <= 1 %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('admin.auth_history', page=data.page - 1, **filters) if data.page > 1 else '#' }}">上一页</a>
+                        </li>
+                        {% if first_page > 1 %}
+                        <li class="page-item"><a class="page-link" href="{{ url_for('admin.auth_history', page=1, **filters) }}">1</a></li>
+                        {% if first_page > 2 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+                        {% endif %}
+                        {% for p in range(first_page, last_page + 1) %}
+                        <li class="page-item {% if p == data.page %}active{% endif %}">
+                            <a class="page-link" href="{{ url_for('admin.auth_history', page=p, **filters) }}">{{ p }}</a>
+                        </li>
+                        {% endfor %}
+                        {% if last_page < data.pages %}
+                        {% if last_page < data.pages - 1 %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+                        <li class="page-item"><a class="page-link" href="{{ url_for('admin.auth_history', page=data.pages, **filters) }}">{{ data.pages }}</a></li>
+                        {% endif %}
+                        <li class="page-item {% if data.page >= data.pages %}disabled{% endif %}">
+                            <a class="page-link" href="{{ url_for('admin.auth_history', page=data.page + 1, **filters) if data.page < data.pages else '#' }}">下一页</a>
+                        </li>
+                    </ul>
+                </nav>
+                {% endif %}
+
+                <p class="text-muted small mt-3 mb-0">
+                    结果按统计口径归一为「通过 / 未通过」：设备断开、采集失败与判定不通过都计入未通过，
+                    需要区分具体原因时请查服务日志。记录只读，删除用户会连同其历史一并清除。
+                </p>
+
+                {% elif filters %}
+                <div class="alert alert-info mb-0">没有符合筛选条件的记录。试着放宽日期范围，或清空用户名。</div>
+                {% else %}
+                <div class="alert alert-info mb-0">
+                    还没有任何认证记录。完成一次身份认证后，这里会出现真实记录 ——
+                    空表不是故障，是这个集合本来就还没有内容。
+                </div>
+                {% endif %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.bootcdn.net/ajax/libs/jquery/3.5.1/jquery.slim.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/popper.js/1.16.1/umd/popper.min.js"></script>
+    <script src="https://cdn.bootcdn.net/ajax/libs/bootstrap/4.5.2/js/bootstrap.min.js"></script>
+</body>
+</html>

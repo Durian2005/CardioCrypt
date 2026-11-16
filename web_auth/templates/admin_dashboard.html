@@ -545,44 +545,58 @@
                         </div>
                     </div>
                 </div>
-                <!-- 预警信息 -->
+                <!-- 最近认证记录：取自 auth_history（写入点是认证终态），不是示意数据 -->
                 <div class="card mt-4">
-                    <div class="card-header">
-                        <h5>预警信息</h5>
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">最近认证记录</h5>
+                        <a class="btn btn-sm btn-light" href="{{ url_for('admin.auth_history') }}">查看全部</a>
                     </div>
                     <div class="card-body">
+                        {% if not recent.ok %}
+                        <div class="alert alert-danger mb-0">
+                            <strong>查询失败（{{ recent.error }}）</strong> —— 这不代表「没有认证」，
+                            而是暂时读不到数据库。详细原因见服务日志。
+                        </div>
+                        {% elif recent.records %}
                         <div class="table-responsive">
                             <table class="table table-striped">
                                 <thead>
                                     <tr>
                                         <th>用户名</th>
                                         <th>时间</th>
+                                        <th>结果</th>
+                                        <th>耗时</th>
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    {% for rec in recent.records %}
                                     <tr>
-                                        <td>user001</td>
-                                        <td>2025-10-09 09:15:23</td>
+                                        <td>{{ rec.get('username') or '—' }}</td>
+                                        <td>{{ rec.get('timestamp').strftime('%Y-%m-%d %H:%M:%S') if rec.get('timestamp') else '—' }}</td>
+                                        <td>
+                                            {% if rec.get('result') == 'success' %}
+                                            <span class="badge badge-success">通过</span>
+                                            {% else %}
+                                            <span class="badge badge-danger">未通过</span>
+                                            {% endif %}
+                                            {% if rec.get('demo') %}<span class="badge badge-warning">演示数据</span>{% endif %}
+                                        </td>
+                                        <td>
+                                            {% set duration = rec.get('duration_ms') %}
+                                            {% if duration is not none %}{{ duration }} ms{% else %}<span class="text-muted">—</span>{% endif %}
+                                        </td>
                                     </tr>
-                                    <tr>
-                                        <td>user002</td>
-                                        <td>2025-10-09 10:02:11</td>
-                                    </tr>
-                                    <tr>
-                                        <td>user003</td>
-                                        <td>2025-10-09 10:45:37</td>
-                                    </tr>
-                                    <tr>
-                                        <td>user004</td>
-                                        <td>2025-10-09 11:20:05</td>
-                                    </tr>
-                                    <tr>
-                                        <td>user005</td>
-                                        <td>2025-10-09 12:03:49</td>
-                                    </tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>
+                        <p class="text-muted small mb-0">只显示最近 {{ recent.records | length }} 条。完整记录与筛选见「查看全部」。</p>
+                        {% else %}
+                        <p class="text-muted mb-0">
+                            暂无认证记录。完成一次身份认证后，这里会显示真实记录 ——
+                            空表不是故障，是这个集合本来就还没有内容。
+                        </p>
+                        {% endif %}
                     </div>
                 </div>
             </div>
