@@ -31,7 +31,7 @@
 | 🔐 身份认证 | 实时采集并比对，输出判定结果与相似度分数（逐窗口评分后取均值） |
 | 📡 数据采集 | 支持 BLE 蓝牙 / 串口 两类设备，带设备扫描与连接向导 |
 | 📊 用户仪表盘 | 心率、情绪、告警等级、设备状态与历史趋势 |
-| ⚙️ 管理后台 | 注册用户管理、运行时参数（模型 / 验证 / 设备 / 训练）动态配置 |
+| ⚙️ 管理后台 | 注册用户管理、认证记录查看（只读、可筛选分页）、运行时参数（模型 / 验证 / 设备 / 训练）动态配置 |
 
 ## 系统架构
 
@@ -58,6 +58,7 @@ flowchart TB
         COL["collection · 设备采集"]
         SIG["signals · 特征组装"]
         STA["stats · 真实统计"]
+        HIS["history · 认证历史查询"]
     end
 
     subgraph ALG["算法层 · 导入失败时降级，服务仍可启动"]
@@ -72,6 +73,7 @@ flowchart TB
     BP --> COL --> SIG --> MDL --> DEC{"阈值比较"}
     DEC --> DB
     BP --> STA --> DB
+    BP --> HIS --> DB
     BP --> HK --> DB
     MDL -. 依赖 .-> LIB
 ```
@@ -107,13 +109,14 @@ flowchart TB
 │   │   ├── auth.py            #   首页 / 注册 / 登录登出
 │   │   ├── device.py          #   设备扫描连接 / 数据采集 / 认证执行
 │   │   ├── dashboard.py       #   用户仪表盘与状态轮询
-│   │   ├── admin.py           #   管理后台
+│   │   ├── admin.py           #   管理后台（用户 / 参数 / 认证记录）
 │   │   └── healthcheck.py     #   /healthz 健康检查（供探针 / 负载均衡）
 │   ├── services/              # 无状态业务函数
 │   │   ├── signals.py         #   信号指标提取与特征组装
 │   │   ├── collection.py      #   BLE / 串口数据采集（验证与注册共用）
 │   │   ├── health.py          #   心率 / 情绪 / 告警等级计算
 │   │   ├── healthcheck.py     #   服务自身健康检查（数据库 / 算法层）
+│   │   ├── history.py         #   认证历史只读查询（分页 + 筛选）
 │   │   └── stats.py           #   真实统计聚合（认证次数 / 运行时长等）
 │   ├── spa_adapter.py         # React SPA 适配层（GET→SPA，POST→原逻辑）
 │   ├── frontend/              # React 前端源码
@@ -197,6 +200,7 @@ venv\Scripts\python.exe -m pytest
 | `tests/test_signal_morphology.py` | 形态参数派生稳定性、默认波形逐点等价、跨主体相异 |
 | `tests/test_deployment_guard.py` | 部署形态护栏：默认口令 + 对外监听必须拒绝启动，回环地址与显式口令下不受影响 |
 | `tests/test_healthz.py` | `/healthz` 的契约：免登录可访问、依赖异常转 503、响应不泄漏部署细节、只读、不缓存 |
+| `tests/test_admin_history.py` | 认证历史查看页：登录保护、筛选与「当天」边界、分页夹取、查询失败不画成空表、只读 |
 
 前端另有基于 Vitest 的单元测试，覆盖请求层 `src/lib/api.ts` 的行为契约 ——
 4xx/5xx 带 JSON 体不能当作成功、读超时、CSRF 令牌获取与 403 重试、数组表单编码：
@@ -480,7 +484,7 @@ DEMO_MODE=1 venv\Scripts\python.exe web_auth\app.py
 | 贡献者 | 主要贡献 |
 |---|---|
 | [@Zzthird](https://github.com/Zzthird) | **项目原始原型**：设备接入（BLE 蓝牙 / 串口）、信号采集与预处理流水线、BiLSTM + Attention 模型训练与认证比对逻辑、MongoDB 存储层 |
-| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（227 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
+| [@Durian2005](https://github.com/Durian2005) | **前端重构、安全加固与工程整理**：React SPA 全站重建与 Flask 适配层；CSRF 防护与登录限流、会话与密钥管理、数据库索引随进程启动初始化；应用工厂与蓝图分层重构、pytest 回归集（253 例）；依赖清单治理、演示模式开关、项目脱敏、文档与发布维护 |
 
 > 原始原型完成于 2025 年 8 月；前端重构、安全加固与工程整理完成于 2026 年 9 月。
 > 仓库保留了完整的开发提交历史，贡献者名单由提交作者自动统计。
